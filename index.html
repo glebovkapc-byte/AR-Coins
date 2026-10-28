@@ -1,48 +1,123 @@
 <!doctype html>
-<html lang="ru">
-<head>
+<html lang="ru"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>AR — Монеты</title>
+<title>AR — Монеты в раме</title>
 <style>
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#10141c;color:#fff}#ar{width:100vw;height:100dvh;position:fixed;inset:0}#panel{position:fixed;top:env(safe-area-inset-top,12px);left:12px;right:12px;z-index:20;background:#131a24db;border:1px solid #ffffff33;border-radius:14px;padding:12px 15px;max-width:580px;margin:auto;font-size:14px}button{background:#e7b63d;color:#171717;border:0;border-radius:10px;font-weight:700;padding:11px 15px;margin-top:8px;font-size:15px}button:disabled{opacity:.4}#details{font-size:12px;opacity:.75;margin-top:6px}#controls{display:flex;gap:10px;flex-wrap:wrap}input[type=range]{width:150px;vertical-align:middle}#adjust{display:none;margin-top:8px}</style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#10141c;color:#fff}
+#ar{width:100vw;height:100dvh;position:fixed;inset:0}
+#panel{position:fixed;top:max(env(safe-area-inset-top),12px);left:12px;right:12px;z-index:20;background:#131a24e8;border:1px solid #ffffff33;border-radius:14px;padding:12px 15px;max-width:560px;margin:auto;font-size:13px}
+button{background:#e7b63d;color:#171717;border:0;border-radius:10px;font-weight:700;padding:10px 13px;margin-top:8px;font-size:14px}button:disabled{opacity:.4}#controls{display:flex;gap:9px;flex-wrap:wrap}#adjust{display:none;margin-top:8px}#adjust label{display:flex;align-items:center;gap:8px;margin:6px 0}#adjust input{flex:1;min-width:80px}#adjust output{min-width:35px;text-align:right}small{opacity:.75}
+</style>
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/","mindar-image-three":"https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"}}</script>
-</head>
-<body><div id="ar"></div><div id="panel"><b>AR-картина: монеты</b><div id="status">Нажмите «Запустить AR», затем наведите телефон на картину.</div><div id="details">При распознавании картинки анимация воспроизводится один раз.</div><div id="controls"><button id="start">Запустить AR</button><button id="replay" style="display:none">Повторить</button></div><div id="adjust">Масштаб <input id="size" type="range" min="0.15" max="2" step="0.05" value="0.7"><span id="sizeText">0.70</span></div></div>
+</head><body>
+<div id="ar"></div><div id="panel"><strong>AR-картина · версия 2</strong>
+<div id="status">Нажми «Запустить AR», затем направь камеру на картину.</div>
+<small>Сначала монета катится по нижнему краю. После этого монеты появляются только внутри рамки.</small>
+<div id="controls"><button id="start">Запустить AR</button><button id="replay" style="display:none">Повторить</button></div>
+<div id="adjust"><label>Размер потока <input id="size" type="range" min="0.15" max="2" step="0.05" value="0.88"><output id="sizeText">0.88</output></label>
+<label>Сдвиг X <input id="offsetX" type="range" min="-0.45" max="0.45" step="0.01" value="0"><output id="xText">0.00</output></label>
+<label>Сдвиг Y <input id="offsetY" type="range" min="-0.35" max="0.35" step="0.01" value="0"><output id="yText">0.00</output></label></div></div>
 <script type="module">
 import * as THREE from 'three';
 import {MindARThree} from 'mindar-image-three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 const $=id=>document.getElementById(id);
-let mindar,renderer,scene,camera,anchor, mixer,clips=[],model,playing=false,detected=false;
+let mindar,renderer,scene,camera,anchor, mixer, model, mainWrapper, hero, clips=[], detected=false, sequenceTime=-1;
 const clock=new THREE.Clock();
-function resetPlay(){if(!mixer||!clips.length)return;mixer.stopAllAction();mixer.setTime(0);for(const clip of clips){const action=mixer.clipAction(clip);action.reset();action.setLoop(THREE.LoopOnce,1);action.clampWhenFinished=true;action.play()}playing=true;}
+const INTRO_SECONDS=2.1;
+// Coordinates relative to the complete image used to compile targets.mind (1280x960).
+// The blank area inside the ornamental frame is ~x=185..1110, y=158..838 pixels.
+// MindAR makes the target 1 unit wide, so 960px = .75 units high.
+const FRAME={left:-0.352,right:0.361,bottom:-0.280,top:0.252};
+// Keep the original GLB animation but cut away any pixels outside the interior of the frame.
+// Planes are moved to world coordinates each frame as the phone tracks the frame.
+const localPlanes=[
+ new THREE.Plane(new THREE.Vector3(1,0,0),-FRAME.left),
+ new THREE.Plane(new THREE.Vector3(-1,0,0),FRAME.right),
+ new THREE.Plane(new THREE.Vector3(0,1,0),-FRAME.bottom),
+ new THREE.Plane(new THREE.Vector3(0,-1,0),FRAME.top)
+];
+const worldPlanes=localPlanes.map(p=>p.clone());
+const tempMatrix=new THREE.Matrix4();
+function stopAnimation(){
+ if(mixer){mixer.stopAllAction();mixer.setTime(0)}
+ sequenceTime=0;
+ if(mainWrapper)mainWrapper.visible=false;
+ if(hero)hero.visible=true;
+}
+function startCascade(){
+ if(!mixer||!clips.length)return;
+ mainWrapper.visible=true;
+ for(const clip of clips){const action=mixer.clipAction(clip);action.reset();action.setLoop(THREE.LoopOnce,1);action.clampWhenFinished=true;action.play();}
+}
+function applySettings(){
+ if(!mainWrapper)return;
+ mainWrapper.scale.setScalar(Number($('size').value)/mainWrapper.userData.maxDimension);
+ mainWrapper.position.set(Number($('offsetX').value),Number($('offsetY').value),-0.025);
+ $('sizeText').textContent=Number($('size').value).toFixed(2);
+ $('xText').textContent=Number($('offsetX').value).toFixed(2);
+ $('yText').textContent=Number($('offsetY').value).toFixed(2);
+}
+function animateIntro(t){
+ if(!hero)return;
+ const k=Math.min(1,t/INTRO_SECONDS);
+ // Roll horizontally along the INSIDE of the bottom edge of the frame.
+ hero.position.set(THREE.MathUtils.lerp(FRAME.left+0.04,FRAME.right-0.04,k),FRAME.bottom+0.026,0.038);
+ hero.rotation.set(Math.PI/2,0,-k*12.5);
+}
 async function init(){
- $('start').disabled=true;$('status').textContent='Загружаем 3D-монеты...';
+ $('start').disabled=true;$('status').textContent='Загрузка модели...';
  try{
   const gltf=await new GLTFLoader().loadAsync('./flying_coins.glb');
   clips=gltf.animations;model=gltf.scene;
-  // Center the animated scene around the printed image. Source has large Blender coordinates.
-  // Translation animation tracks contain absolute values; centering a wrapper preserves their motion.
-  const base= new THREE.Group();base.add(model);
-  const bbox = new THREE.Box3().setFromObject(model);const center=bbox.getCenter(new THREE.Vector3());const dimensions=bbox.getSize(new THREE.Vector3());
-  const maxDimension=Math.max(dimensions.x,dimensions.y,dimensions.z,1);
+  const bbox=new THREE.Box3().setFromObject(model);const center=bbox.getCenter(new THREE.Vector3());const size=bbox.getSize(new THREE.Vector3());
+  const maxDimension=Math.max(size.x,size.y,size.z,1);
   model.position.sub(center);
-  base.scale.setScalar(0.7/maxDimension);
-  const applySize=()=>{base.scale.setScalar(Number($('size').value)/maxDimension);$('sizeText').textContent=Number($('size').value).toFixed(2)};
-  $('size').addEventListener('input',applySize);
+  mainWrapper=new THREE.Group();mainWrapper.userData.maxDimension=maxDimension;mainWrapper.add(model);mainWrapper.visible=false;
+  // Make independent material instances so the introductory coin is not cropped.
+  const cache=new Map();
+  model.traverse(o=>{if(!o.isMesh)return;const original=o.material;
+   const crop=m=>{if(!cache.has(m)){const cloned=m.clone();cloned.clippingPlanes=worldPlanes;cloned.clipIntersection=false;cloned.needsUpdate=true;cache.set(m,cloned)}return cache.get(m)};
+   o.material=Array.isArray(original)?original.map(crop):crop(original);
+  });
   mixer=new THREE.AnimationMixer(model);
-  $('status').textContent=`Загружено: ${clips.length} анимаций. Запускаем камеру...`;
+  const sourceMesh=model.children.find(o=>o.isMesh)||model.getObjectByProperty('isMesh',true);
+  if(sourceMesh){
+   hero=new THREE.Mesh(sourceMesh.geometry,Array.isArray(sourceMesh.material)?sourceMesh.material[0].clone():sourceMesh.material.clone());
+   // Remove cropping only from this coin.
+   hero.material.clippingPlanes=[];hero.material.needsUpdate=true;
+   hero.geometry.computeBoundingSphere();
+   const rad=hero.geometry.boundingSphere?.radius||1;
+   hero.scale.setScalar(.022/Math.max(rad,.0001));
+   hero.frustumCulled=false;
+  }
+  $('status').textContent=`Загружено ${clips.length} клипов. Включаем камеру...`;
   mindar=new MindARThree({container:$('ar'),imageTargetSrc:'./targets.mind',maxTrack:1});
-  ({renderer,scene,camera}=mindar);anchor=mindar.addAnchor(0);anchor.group.add(base);
-  scene.add(new THREE.HemisphereLight(0xffffff,0xaaaaaa,2.6));
-  const directional = new THREE.DirectionalLight(0xffffff,2);directional.position.set(0,1,2);scene.add(directional);
-  anchor.onTargetFound=()=>{detected=true;$('status').textContent='Картина распознана — воспроизводим монеты';$('replay').style.display='inline-block';$('adjust').style.display='block';if(!playing)resetPlay()};
+  ({renderer,scene,camera}=mindar);
+  renderer.localClippingEnabled=true;
+  anchor=mindar.addAnchor(0);anchor.group.add(mainWrapper);
+  if(hero)anchor.group.add(hero);
+  scene.add(new THREE.HemisphereLight(0xffffff,0xaaaaaa,2.5));
+  const light=new THREE.DirectionalLight(0xffffff,1.8);light.position.set(0,1,2);scene.add(light);
+  $('adjust').style.display='block';applySettings();
+  for(const id of ['size','offsetX','offsetY'])$(id).addEventListener('input',applySettings);
+  anchor.onTargetFound=()=>{detected=true;$('status').textContent='Картина распознана';$('replay').style.display='inline-block';if(sequenceTime<0)stopAnimation()};
   anchor.onTargetLost=()=>{detected=false;$('status').textContent='Направьте камеру на картину'};
-  $('replay').addEventListener('click',resetPlay);
-  await mindar.start();
-  $('start').style.display='none';$('status').textContent='Направьте камеру на картину';
-  clock.start();renderer.setAnimationLoop(()=>{const delta=Math.min(clock.getDelta(),0.1);if(detected&&mixer)mixer.update(delta);renderer.render(scene,camera)});
- }catch(err){console.error(err);$('status').textContent='Ошибка: '+(err?.message||err);$('start').disabled=false;}
+  $('replay').addEventListener('click',stopAnimation);
+  await mindar.start();$('start').style.display='none';$('status').textContent='Направьте камеру на картину';
+  clock.start();renderer.setAnimationLoop(()=>{
+   const dt=Math.min(clock.getDelta(),.08);
+   if(detected&&sequenceTime>=0){
+    const before=sequenceTime;sequenceTime+=dt;
+    if(before<INTRO_SECONDS){animateIntro(sequenceTime);if(sequenceTime>=INTRO_SECONDS){if(hero)hero.visible=false;startCascade()}}
+    else mixer.update(dt);
+   }
+   anchor.group.updateWorldMatrix(true,false);
+   // Clipping is defined in the same coordinates as the tracked frame.
+   for(let i=0;i<4;i++)worldPlanes[i].copy(localPlanes[i]).applyMatrix4(anchor.group.matrixWorld);
+   renderer.render(scene,camera);
+  });
+ }catch(err){console.error(err);$('status').textContent='Ошибка: '+(err?.message||err);$('start').disabled=false}
 }
 $('start').addEventListener('click',init);
 </script></body></html>
