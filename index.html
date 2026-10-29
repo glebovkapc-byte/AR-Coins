@@ -1,6 +1,6 @@
 <!doctype html><html lang="ru"><head><meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>AR Монеты — 90 секунд (v4.2)</title>
+<title>AR Монеты — 90 секунд (v4.3)</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#11141a;color:#fff;font-family:system-ui}
 #scene{position:fixed;inset:0;width:100vw;height:100dvh}
@@ -12,7 +12,7 @@ button{background:#f5c454;border:0;border-radius:8px;padding:9px 12px;font-weigh
 </head><body>
 <div id="scene"></div>
 <div id="ui">
-  <b>AR-картина · 90 секунд <span style="color:#f5c454">v4.2 · монеты внутри рамы</span></b>
+  <b>AR-картина · 90 секунд <span style="color:#f5c454">v4.3 · монеты внутри рамы</span></b>
   <div id="status">Нажми «Запустить AR»</div>
   <button id="start">Запустить AR</button>
   <button id="replay" hidden>Сначала</button>
@@ -21,7 +21,7 @@ button{background:#f5c454;border:0;border-radius:8px;padding:9px 12px;font-weigh
     <label>Размер сцены <input id="scale" type="range" min="0.6" max="1.6" step=".05" value="1"></label> <span id="sv">1</span><br>
     <label>Высота <input id="yoffset" type="range" min="-.2" max=".2" step=".01" value="0"></label> <span id="yv">0</span>
   </div>
-  <small>1 → 1 / 3 / 5 / 7 → с 19-й секунды непрерывный водопад сверху, всё плотнее. Никакого накопления в раме. Часть монет высыпается на пол и исчезает через 10 секунд. Звук пока отключён.</small>
+  <small>Сверху монеты появляются из-за края рамы, падают без остановки и постепенно становятся гуще. Часть высыпается на пол и исчезает через 10 секунд. Звук отключён.</small>
 </div>
 <script type="module">
 const $=id=>document.getElementById(id);
@@ -143,28 +143,39 @@ async function initialize(){
     return null;
   }
 
+  // Coins start above the visible opening; none are born in mid-air.
+  // The top strip acts as the hidden entrance. Fade-in is done by scale,
+  // so a recycled coin never instantly appears fully formed in the image.
   function poseStream(c,t){
-    if(t<c.activeAt) return null;
     const density=clamp((t-19)/71,0,1);
     const insideDur=c.insideDur*(1-.13*density);
+    const entry=.34; // seconds spent emerging from behind the upper frame
+    const fallDur=insideDur+entry;
+    // Stagger initial entry in time rather than assigning an already-visible phase.
+    const local=t-c.activeAt-c.phase*.7;
+    if(local<0) return null;
     const innerPose=(dt)=>{
-      const p=clamp(dt/insideDur,0,1);
+      const p=clamp(dt/fallDur,0,1);
       const x=c.xBase+Math.sin(dt*3+c.phase*6)*c.sway;
-      const y=lerp(safeTop,safeBottom,p);
+      const startY=safeTop+RADIUS*2.4;
+      const y=lerp(startY,safeBottom,p);
+      const reveal=clamp((safeTop+RADIUS*.35-y)/(RADIUS*1.65),0,1);
       const spin=c.spinBase+dt*(4+Math.abs(c.spinBase));
-      return {x,y,z:-.045,rx:Math.PI/2+c.tumble*.18,ry:spin,rz:c.tumble*.2};
+      // Do not display the coin above the decorative top edge.
+      if(reveal<=0) return null;
+      return {x,y,z:-.045,rx:Math.PI/2+c.tumble*.18,
+              ry:spin,rz:c.tumble*.2,s:reveal};
     };
     if(!c.spill){
-      // Immediate respawn at top: continuous rain, never pauses.
-      const phase=(t-c.activeAt+c.phase*insideDur)%insideDur;
-      return innerPose(phase);
+      const dt=local%fallDur;
+      return innerPose(dt);
     }
     const landY=FLOOR_Y+RADIUS;
     const tLand=solveLanding(safeBottom,c.vy,c.g,landY);
-    const cycle=insideDur+tLand+c.hold;
-    const phase=(t-c.activeAt+c.phase*cycle)%cycle;
-    if(phase<insideDur) return innerPose(phase);
-    const dt=Math.min(tLand,phase-insideDur);
+    const cycle=fallDur+tLand+c.hold;
+    const phase=local%cycle;
+    if(phase<fallDur) return innerPose(phase);
+    const dt=Math.min(tLand,phase-fallDur);
     const x=c.xBase+c.vx*dt;
     const z=.02+c.vz*dt;
     const y=Math.max(landY,safeBottom+c.vy*dt-.5*c.g*dt*dt);
@@ -187,7 +198,7 @@ async function initialize(){
       const insidePhase=c.kind==='stream' && pose && pose.z<0;
       if(pose && insidePhase){
         pose.x=clamp(pose.x,-safeX,safeX);
-        pose.y=clamp(pose.y,safeBottom,safeTop);
+        // Do not clamp Y: it caused visible coins to materialize at the upper rim.
         pose.z=-.045; // behind the decorative frame's front face
       }
       if(pose) place(pose); else hide();
