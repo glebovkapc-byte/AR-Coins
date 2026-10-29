@@ -1,10 +1,17 @@
-<!doctype html><html lang="ru"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><title>AR Монеты — 90 секунд</title>
+<!doctype html><html lang="ru"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><title>AR Монеты — 90 секунд (исправлен запуск)</title>
 <style>*{box-sizing:border-box}body{margin:0;background:#121518;color:white;font-family:system-ui}#scene{position:fixed;inset:0;width:100vw;height:100dvh}#ui{position:fixed;top:12px;left:12px;right:12px;max-width:480px;margin:auto;z-index:10;background:#171b25de;padding:12px;border-radius:14px;font-size:13px}button{background:#f5c454;border:0;border-radius:8px;padding:9px 12px;font-weight:700;margin:4px 5px 0 0}input{width:95px}#debug{display:none;margin-top:8px}#status{margin:5px 0}small{color:#ddd}</style>
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","mindar-image-three":"https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"}}</script></head>
 <body><div id="scene"></div><div id="ui"><b>AR-картина · 90 секунд</b><div id="status">Нажми «Запустить AR»</div><button id="start">Запустить AR</button><button id="replay" hidden>Сначала</button><button id="settings" hidden>Настройки</button><div id="debug"><label>Размер сцены <input id="scale" type="range" min="0.6" max="1.6" step=".05" value="1"></label><span id="sv">1</span><br><label>Высота <input id="yoffset" type="range" min="-.2" max=".2" step=".01" value="0"></label><span id="yv">0</span></div><small>Дизайны: 5 · пол: 125 см ниже нижнего края рамы · рамка: 93 × 69 см</small></div>
 <script type="module">
-import * as THREE from 'three';import {MindARThree} from 'mindar-image-three';
-const $=id=>document.getElementById(id),mindar=new MindARThree({container:$('scene'),imageTargetSrc:'./targets.mind',maxTrack:1});
+const $=id=>document.getElementById(id);
+let initialized=false,btnLock=false;
+async function initialize(){
+  $('status').textContent='Загружаем библиотеки AR...';
+  const [THREE, mindModule] = await Promise.all([import('three'), import('mindar-image-three')]);
+  const { MindARThree } = mindModule;
+
+
+const mindar=new MindARThree({container:$('scene'),imageTargetSrc:'./targets.mind',maxTrack:1});
 const {renderer,scene,camera}=mindar,anchor=mindar.addAnchor(0); renderer.outputColorSpace=THREE.SRGBColorSpace;
 scene.add(new THREE.HemisphereLight(0xffffff,0x7f623d,2.6));const directional=new THREE.DirectionalLight(0xffffff,2);directional.position.set(-1,2,3);scene.add(directional);
 // MindAR target spans one world unit in X, representing the real 93-cm-wide frame.
@@ -79,10 +86,31 @@ function update(t){const counts=[0,0,0,0,0];let display=0;
  meshes.forEach(m=>{m.instanceMatrix.needsUpdate=true;});
  return display;
 }
-$('start').onclick=async()=>{const btn=$('start');btn.disabled=true;$('status').textContent='Запуск камеры...';try{await mindar.start();$('replay').hidden=false;$('settings').hidden=false;btn.hidden=true;reset();renderer.setAnimationLoop(()=>{if(playing){elapsed=(performance.now()-t0)/1000;if(elapsed>=90){elapsed=90;playing=false;}}update(elapsed);if(playing)$('status').textContent=`Анимация: ${elapsed.toFixed(1)} / 90 сек`;renderer.render(scene,camera);});}catch(e){console.error(e);$('status').textContent='Не удалось запустить камеру. Нужны HTTPS и разрешение камеры.';btn.disabled=false;}};
+$('start').onclick=async()=>{const btn=$('start');btn.disabled=true;$('status').textContent='Запуск камеры...';try{await mindar.start();$('replay').hidden=false;$('settings').hidden=false;btn.hidden=true;reset();renderer.setAnimationLoop(()=>{if(playing){elapsed=(performance.now()-t0)/1000;if(elapsed>=90){elapsed=90;playing=false;}}update(elapsed);if(playing)$('status').textContent=`Анимация: ${elapsed.toFixed(1)} / 90 сек`;renderer.render(scene,camera);});}catch(e){console.error(e);$('status').textContent='Ошибка камеры: '+(e?.message||String(e));btn.disabled=false;}};
 $('replay').onclick=reset;
 $('settings').onclick=()=>$('debug').style.display=$('debug').style.display==='block'?'none':'block';
 $('scale').oninput=e=>{root.scale.setScalar(+e.target.value);$('sv').textContent=e.target.value;};
 $('yoffset').oninput=e=>{root.position.y=+e.target.value;$('yv').textContent=e.target.value;};
-</script></body></html>
 
+}
+$('start').addEventListener('click',async function firstStart(){
+  if(initialized||btnLock)return;btnLock=true;
+  const btn=$('start');btn.disabled=true;
+  try{
+    $('status').textContent='Проверяем файл распознавания...';
+    const response=await fetch('./targets.mind',{cache:'no-store'});
+    if(!response.ok)throw new Error('targets.mind не найден (HTTP '+response.status+'). Проверь название и расположение файла на GitHub.');
+    const bytes=await response.arrayBuffer();
+    if(bytes.byteLength<100)throw new Error('targets.mind слишком маленький или пустой');
+    await initialize();
+    initialized=true;btnLock=false;
+    btn.disabled=false;
+    btn.onclick();
+  }catch(e){
+    console.error('AR start failed',e);
+    $('status').textContent='Ошибка: '+(e?.message||String(e));
+    btn.disabled=false;btnLock=false;
+  }
+});
+window.addEventListener('unhandledrejection',e=>{console.error(e.reason);$('status').textContent='Ошибка загрузки: '+(e.reason?.message||String(e.reason));});
+</script></body></html>
