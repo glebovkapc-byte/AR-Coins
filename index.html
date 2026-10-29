@@ -1,123 +1,88 @@
-<!doctype html>
-<html lang="ru"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>AR — Монеты в раме</title>
-<style>
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#10141c;color:#fff}
-#ar{width:100vw;height:100dvh;position:fixed;inset:0}
-#panel{position:fixed;top:max(env(safe-area-inset-top),12px);left:12px;right:12px;z-index:20;background:#131a24e8;border:1px solid #ffffff33;border-radius:14px;padding:12px 15px;max-width:560px;margin:auto;font-size:13px}
-button{background:#e7b63d;color:#171717;border:0;border-radius:10px;font-weight:700;padding:10px 13px;margin-top:8px;font-size:14px}button:disabled{opacity:.4}#controls{display:flex;gap:9px;flex-wrap:wrap}#adjust{display:none;margin-top:8px}#adjust label{display:flex;align-items:center;gap:8px;margin:6px 0}#adjust input{flex:1;min-width:80px}#adjust output{min-width:35px;text-align:right}small{opacity:.75}
-</style>
-<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/","mindar-image-three":"https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"}}</script>
-</head><body>
-<div id="ar"></div><div id="panel"><strong>AR-картина · версия 2</strong>
-<div id="status">Нажми «Запустить AR», затем направь камеру на картину.</div>
-<small>Сначала монета катится по нижнему краю. После этого монеты появляются только внутри рамки.</small>
-<div id="controls"><button id="start">Запустить AR</button><button id="replay" style="display:none">Повторить</button></div>
-<div id="adjust"><label>Размер потока <input id="size" type="range" min="0.15" max="2" step="0.05" value="0.88"><output id="sizeText">0.88</output></label>
-<label>Сдвиг X <input id="offsetX" type="range" min="-0.45" max="0.45" step="0.01" value="0"><output id="xText">0.00</output></label>
-<label>Сдвиг Y <input id="offsetY" type="range" min="-0.35" max="0.35" step="0.01" value="0"><output id="yText">0.00</output></label></div></div>
+<!doctype html><html lang="ru"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><title>AR Монеты — 90 секунд</title>
+<style>*{box-sizing:border-box}body{margin:0;background:#121518;color:white;font-family:system-ui}#scene{position:fixed;inset:0;width:100vw;height:100dvh}#ui{position:fixed;top:12px;left:12px;right:12px;max-width:480px;margin:auto;z-index:10;background:#171b25de;padding:12px;border-radius:14px;font-size:13px}button{background:#f5c454;border:0;border-radius:8px;padding:9px 12px;font-weight:700;margin:4px 5px 0 0}input{width:95px}#debug{display:none;margin-top:8px}#status{margin:5px 0}small{color:#ddd}</style>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","mindar-image-three":"https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"}}</script></head>
+<body><div id="scene"></div><div id="ui"><b>AR-картина · 90 секунд</b><div id="status">Нажми «Запустить AR»</div><button id="start">Запустить AR</button><button id="replay" hidden>Сначала</button><button id="settings" hidden>Настройки</button><div id="debug"><label>Размер сцены <input id="scale" type="range" min="0.6" max="1.6" step=".05" value="1"></label><span id="sv">1</span><br><label>Высота <input id="yoffset" type="range" min="-.2" max=".2" step=".01" value="0"></label><span id="yv">0</span></div><small>Дизайны: 5 · пол: 125 см ниже нижнего края рамы · рамка: 93 × 69 см</small></div>
 <script type="module">
-import * as THREE from 'three';
-import {MindARThree} from 'mindar-image-three';
-import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-const $=id=>document.getElementById(id);
-let mindar,renderer,scene,camera,anchor, mixer, model, mainWrapper, hero, clips=[], detected=false, sequenceTime=-1;
-const clock=new THREE.Clock();
-const INTRO_SECONDS=2.1;
-// Coordinates relative to the complete image used to compile targets.mind (1280x960).
-// The blank area inside the ornamental frame is ~x=185..1110, y=158..838 pixels.
-// MindAR makes the target 1 unit wide, so 960px = .75 units high.
-const FRAME={left:-0.352,right:0.361,bottom:-0.280,top:0.252};
-// Keep the original GLB animation but cut away any pixels outside the interior of the frame.
-// Planes are moved to world coordinates each frame as the phone tracks the frame.
-const localPlanes=[
- new THREE.Plane(new THREE.Vector3(1,0,0),-FRAME.left),
- new THREE.Plane(new THREE.Vector3(-1,0,0),FRAME.right),
- new THREE.Plane(new THREE.Vector3(0,1,0),-FRAME.bottom),
- new THREE.Plane(new THREE.Vector3(0,-1,0),FRAME.top)
-];
-const worldPlanes=localPlanes.map(p=>p.clone());
-const tempMatrix=new THREE.Matrix4();
-function stopAnimation(){
- if(mixer){mixer.stopAllAction();mixer.setTime(0)}
- sequenceTime=0;
- if(mainWrapper)mainWrapper.visible=false;
- if(hero)hero.visible=true;
+import * as THREE from 'three';import {MindARThree} from 'mindar-image-three';
+const $=id=>document.getElementById(id),mindar=new MindARThree({container:$('scene'),imageTargetSrc:'./targets.mind',maxTrack:1});
+const {renderer,scene,camera}=mindar,anchor=mindar.addAnchor(0); renderer.outputColorSpace=THREE.SRGBColorSpace;
+scene.add(new THREE.HemisphereLight(0xffffff,0x7f623d,2.6));const directional=new THREE.DirectionalLight(0xffffff,2);directional.position.set(-1,2,3);scene.add(directional);
+// MindAR target spans one world unit in X, representing the real 93-cm-wide frame.
+const WIDTH=.93,HEIGHT=.69,FLOOR_BELOW=1.25,unit=1/WIDTH;
+const INNER_HALF_X=.405*unit, INNER_TOP=.265*unit, INNER_BOTTOM=-.265*unit;
+const EDGE_Y=-HEIGHT/2*unit, FLOOR_Y=-(HEIGHT/2+FLOOR_BELOW)*unit;
+const DIAMETER=.075*unit,RADIUS=DIAMETER/2;
+const root=new THREE.Group();anchor.group.add(root);root.rotation.set(0,0,0);
+const mats=[],meshes=[],countByType=85,total=countByType*5,dummy=new THREE.Object3D();
+const edge=new THREE.MeshStandardMaterial({color:0xb7832e,metalness:.76,roughness:.28});
+const textureLoader=new THREE.TextureLoader();
+for(let i=0;i<5;i++){
+ const t=textureLoader.load(`./coin_${i+1}.png`);t.colorSpace=THREE.SRGBColorSpace;
+ const face=new THREE.MeshStandardMaterial({map:t,metalness:.35,roughness:.34,side:THREE.DoubleSide,transparent:true});
+ const geo=new THREE.CylinderGeometry(RADIUS,RADIUS,RADIUS*.13,40,1,false);
+ const mesh=new THREE.InstancedMesh(geo,[edge,face,face],countByType);mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.frustumCulled=false;root.add(mesh);meshes.push(mesh);
 }
-function startCascade(){
- if(!mixer||!clips.length)return;
- mainWrapper.visible=true;
- for(const clip of clips){const action=mixer.clipAction(clip);action.reset();action.setLoop(THREE.LoopOnce,1);action.clampWhenFinished=true;action.play();}
+// Stable deterministic positions: every replay is identical.
+function noise(n){let x=Math.sin(n*127.1+78.233)*43758.5453;return x-Math.floor(x)}
+const coins=Array.from({length:total},(_,i)=>({i,type:i%5,t:0,sx:0,sy:0,sz:0,mode:'fall',speed:1,phase:noise(i+1)*6.28}));
+function setup(){for(let i=0;i<total;i++){
+ const c=coins[i];c.type=i%5;
+ if(i===0){c.t=0;c.mode='roll';continue;}
+ if(i<=10){c.t=6+(i-1)*1.35;c.mode='single';}
+ else{const j=i-11;c.t=20+j*.13+noise(i)*3;c.mode='water';}
+ c.sx=(noise(i*3+1)*2-1)*(INNER_HALF_X-RADIUS*1.1);
+ c.sy=INNER_TOP+RADIUS*(1+noise(i+4)*4);
+ c.sz=-.012;
+ c.speed=(.46+noise(i+9)*.38)*unit;
+ }}setup();
+let playing=false,shown=false,t0=0,pausedAt=0,elapsed=0;
+function reset(){elapsed=0;t0=performance.now();playing=shown;$('status').textContent='Анимация: 0 / 90 сек'}
+anchor.onTargetFound=()=>{shown=true;if(!playing&&elapsed<90){playing=true;t0=performance.now()-elapsed*1000;}$('status').textContent='Картина распознана';};
+anchor.onTargetLost=()=>{shown=false;if(playing){elapsed=(performance.now()-t0)/1000;playing=false;}$('status').textContent='Наведите камеру на раму';};
+const rot=new THREE.Euler(),quat=new THREE.Quaternion(),temp=new THREE.Vector3();
+function hide(){dummy.position.set(0,0,-1000);dummy.scale.setScalar(.00001);dummy.updateMatrix();}
+function update(t){const counts=[0,0,0,0,0];let display=0;
+ for(const c of coins){let x=0,y=0,z=0,spin=0,tilt=0,visible=false,local=t-c.t;const duration=2.3;
+ if(local>=0){
+ if(c.mode==='roll'){
+  // Upright coin rolls along the inside bottom edge, then falls to a calibrated virtual floor.
+  if(local<3.2){x=-INNER_HALF_X+RADIUS+(INNER_HALF_X*2-RADIUS*2)*local/3.2;y=INNER_BOTTOM+RADIUS;z=.012;spin=-local*4.3;visible=true;}
+  else if(local<9){const dt=local-3.2;x=INNER_HALF_X-RADIUS+Math.min(dt,1)*.07;y=INNER_BOTTOM+RADIUS-0.5*9.81*unit*dt*dt;const bottom=FLOOR_Y+RADIUS;if(y<bottom){y=bottom;spin*=.9;}z=.10;spin=-13.7-dt*2;visible=dt<5;}
+ }else if(c.mode==='single'){
+  const p=local;
+  x=c.sx+Math.sin(p*2+c.phase)*.045;
+  // Brief emergence from bottom edge, followed by free fall outside the frame.
+  y=INNER_BOTTOM+RADIUS+ Math.min(p,.38)*.18*unit- Math.max(0,p-.38)**2*2.7*unit;
+  z=.04+Math.min(p,1)*.12;spin=p*7+c.phase;tilt=p*2;
+  if(y<FLOOR_Y+RADIUS){y=FLOOR_Y+RADIUS;}
+  visible=p<4.6;
+ }else{
+  const cycle=2.9+noise(c.i+11)*1.2;
+  let p=local%cycle;
+  x=c.sx+Math.sin(p*1.8+c.phase)*(.014+.03*noise(c.i+12));
+  y=c.sy-.5*(1.8+noise(c.i+15)*1.9)*unit*p*p;
+  z=-.015;
+  spin=p*(4+noise(c.i+30)*7);tilt=p*2;
+  // Waterfall is hidden behind the painted frame: only visible inside opening.
+  const inside=x> -INNER_HALF_X+RADIUS*.7 && x<INNER_HALF_X-RADIUS*.7 && y<INNER_TOP-RADIUS*.6 && y>INNER_BOTTOM+RADIUS*.6;
+  visible=inside && p<cycle;
+  // After 35s some falling coins spill forward and down toward the floor.
+  if(t>35 && c.i%9===0 && p>1.05){z=.10+(p-1.05)*.07;y=INNER_BOTTOM+.03-(p-1.05)*.95*unit;visible=y>FLOOR_Y-RADIUS&&p<3.3;}
+ }
+ }
+ const mesh=meshes[c.type],index=counts[c.type]++;
+ if(visible){
+ dummy.position.set(x,y,z);dummy.rotation.set(Math.PI/2+tilt,spin,c.mode==='roll'?0:spin*.47);dummy.scale.setScalar(1);dummy.updateMatrix();display++;
+ }else{hide();}
+ mesh.setMatrixAt(index,dummy.matrix);
+ }
+ meshes.forEach(m=>{m.instanceMatrix.needsUpdate=true;});
+ return display;
 }
-function applySettings(){
- if(!mainWrapper)return;
- mainWrapper.scale.setScalar(Number($('size').value)/mainWrapper.userData.maxDimension);
- mainWrapper.position.set(Number($('offsetX').value),Number($('offsetY').value),-0.025);
- $('sizeText').textContent=Number($('size').value).toFixed(2);
- $('xText').textContent=Number($('offsetX').value).toFixed(2);
- $('yText').textContent=Number($('offsetY').value).toFixed(2);
-}
-function animateIntro(t){
- if(!hero)return;
- const k=Math.min(1,t/INTRO_SECONDS);
- // Roll horizontally along the INSIDE of the bottom edge of the frame.
- hero.position.set(THREE.MathUtils.lerp(FRAME.left+0.04,FRAME.right-0.04,k),FRAME.bottom+0.026,0.038);
- hero.rotation.set(Math.PI/2,0,-k*12.5);
-}
-async function init(){
- $('start').disabled=true;$('status').textContent='Загрузка модели...';
- try{
-  const gltf=await new GLTFLoader().loadAsync('./flying_coins.glb');
-  clips=gltf.animations;model=gltf.scene;
-  const bbox=new THREE.Box3().setFromObject(model);const center=bbox.getCenter(new THREE.Vector3());const size=bbox.getSize(new THREE.Vector3());
-  const maxDimension=Math.max(size.x,size.y,size.z,1);
-  model.position.sub(center);
-  mainWrapper=new THREE.Group();mainWrapper.userData.maxDimension=maxDimension;mainWrapper.add(model);mainWrapper.visible=false;
-  // Make independent material instances so the introductory coin is not cropped.
-  const cache=new Map();
-  model.traverse(o=>{if(!o.isMesh)return;const original=o.material;
-   const crop=m=>{if(!cache.has(m)){const cloned=m.clone();cloned.clippingPlanes=worldPlanes;cloned.clipIntersection=false;cloned.needsUpdate=true;cache.set(m,cloned)}return cache.get(m)};
-   o.material=Array.isArray(original)?original.map(crop):crop(original);
-  });
-  mixer=new THREE.AnimationMixer(model);
-  const sourceMesh=model.children.find(o=>o.isMesh)||model.getObjectByProperty('isMesh',true);
-  if(sourceMesh){
-   hero=new THREE.Mesh(sourceMesh.geometry,Array.isArray(sourceMesh.material)?sourceMesh.material[0].clone():sourceMesh.material.clone());
-   // Remove cropping only from this coin.
-   hero.material.clippingPlanes=[];hero.material.needsUpdate=true;
-   hero.geometry.computeBoundingSphere();
-   const rad=hero.geometry.boundingSphere?.radius||1;
-   hero.scale.setScalar(.022/Math.max(rad,.0001));
-   hero.frustumCulled=false;
-  }
-  $('status').textContent=`Загружено ${clips.length} клипов. Включаем камеру...`;
-  mindar=new MindARThree({container:$('ar'),imageTargetSrc:'./targets.mind',maxTrack:1});
-  ({renderer,scene,camera}=mindar);
-  renderer.localClippingEnabled=true;
-  anchor=mindar.addAnchor(0);anchor.group.add(mainWrapper);
-  if(hero)anchor.group.add(hero);
-  scene.add(new THREE.HemisphereLight(0xffffff,0xaaaaaa,2.5));
-  const light=new THREE.DirectionalLight(0xffffff,1.8);light.position.set(0,1,2);scene.add(light);
-  $('adjust').style.display='block';applySettings();
-  for(const id of ['size','offsetX','offsetY'])$(id).addEventListener('input',applySettings);
-  anchor.onTargetFound=()=>{detected=true;$('status').textContent='Картина распознана';$('replay').style.display='inline-block';if(sequenceTime<0)stopAnimation()};
-  anchor.onTargetLost=()=>{detected=false;$('status').textContent='Направьте камеру на картину'};
-  $('replay').addEventListener('click',stopAnimation);
-  await mindar.start();$('start').style.display='none';$('status').textContent='Направьте камеру на картину';
-  clock.start();renderer.setAnimationLoop(()=>{
-   const dt=Math.min(clock.getDelta(),.08);
-   if(detected&&sequenceTime>=0){
-    const before=sequenceTime;sequenceTime+=dt;
-    if(before<INTRO_SECONDS){animateIntro(sequenceTime);if(sequenceTime>=INTRO_SECONDS){if(hero)hero.visible=false;startCascade()}}
-    else mixer.update(dt);
-   }
-   anchor.group.updateWorldMatrix(true,false);
-   // Clipping is defined in the same coordinates as the tracked frame.
-   for(let i=0;i<4;i++)worldPlanes[i].copy(localPlanes[i]).applyMatrix4(anchor.group.matrixWorld);
-   renderer.render(scene,camera);
-  });
- }catch(err){console.error(err);$('status').textContent='Ошибка: '+(err?.message||err);$('start').disabled=false}
-}
-$('start').addEventListener('click',init);
+$('start').onclick=async()=>{const btn=$('start');btn.disabled=true;$('status').textContent='Запуск камеры...';try{await mindar.start();$('replay').hidden=false;$('settings').hidden=false;btn.hidden=true;reset();renderer.setAnimationLoop(()=>{if(playing){elapsed=(performance.now()-t0)/1000;if(elapsed>=90){elapsed=90;playing=false;}}update(elapsed);if(playing)$('status').textContent=`Анимация: ${elapsed.toFixed(1)} / 90 сек`;renderer.render(scene,camera);});}catch(e){console.error(e);$('status').textContent='Не удалось запустить камеру. Нужны HTTPS и разрешение камеры.';btn.disabled=false;}};
+$('replay').onclick=reset;
+$('settings').onclick=()=>$('debug').style.display=$('debug').style.display==='block'?'none':'block';
+$('scale').oninput=e=>{root.scale.setScalar(+e.target.value);$('sv').textContent=e.target.value;};
+$('yoffset').oninput=e=>{root.position.y=+e.target.value;$('yv').textContent=e.target.value;};
 </script></body></html>
+
