@@ -1,6 +1,6 @@
 <!doctype html><html lang="ru"><head><meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>AR Монеты — 90 секунд (v4.3)</title>
+<title>AR Монеты — 90 секунд (v4.4)</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#11141a;color:#fff;font-family:system-ui}
 #scene{position:fixed;inset:0;width:100vw;height:100dvh}
@@ -12,7 +12,7 @@ button{background:#f5c454;border:0;border-radius:8px;padding:9px 12px;font-weigh
 </head><body>
 <div id="scene"></div>
 <div id="ui">
-  <b>AR-картина · 90 секунд <span style="color:#f5c454">v4.3 · монеты внутри рамы</span></b>
+  <b>AR-картина · 90 секунд <span style="color:#f5c454">v4.4 · монеты внутри рамы</span></b>
   <div id="status">Нажми «Запустить AR»</div>
   <button id="start">Запустить AR</button>
   <button id="replay" hidden>Сначала</button>
@@ -105,7 +105,7 @@ async function initialize(){
       insideDur:1.45+noise(i+141)*1.45,
       // Only a fraction of the instances spill onto the floor;
       // the rest recycle continuously through the frame.
-      spill:i%4===0,
+      spill:i%4!==0,
       vx:(noise(i+161)*2-1)*.21,
       vy:(.12+noise(i+171)*.19)*unit,
       vz:.07+noise(i+181)*.13,
