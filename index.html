@@ -1,6 +1,6 @@
 <!doctype html><html lang="ru"><head><meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>AR Монеты — 90 секунд (v3.9)</title>
+<title>AR Монеты — 90 секунд (v4.0)</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#11141a;color:#fff;font-family:system-ui}
 #scene{position:fixed;inset:0;width:100vw;height:100dvh}
@@ -12,7 +12,7 @@ button{background:#f5c454;border:0;border-radius:8px;padding:9px 12px;font-weigh
 </head><body>
 <div id="scene"></div>
 <div id="ui">
-  <b>AR-картина · 90 секунд <span style="color:#f5c454">v3.9 · непрерывный поток</span></b>
+  <b>AR-картина · 90 секунд <span style="color:#f5c454">v4.0 · монеты внутри рамы</span></b>
   <div id="status">Нажми «Запустить AR»</div>
   <button id="start">Запустить AR</button>
   <button id="replay" hidden>Сначала</button>
@@ -38,9 +38,15 @@ async function initialize(){
   const directional=new THREE.DirectionalLight(0xffffff,1.95); directional.position.set(-1,2,3); scene.add(directional);
 
   const WIDTH=.93, HEIGHT=.69, FLOOR_BELOW=1.25, unit=1/WIDTH;
-  const INNER_HALF_X=.405*unit, INNER_TOP=.265*unit, INNER_BOTTOM=-.265*unit, MID_Y=0;
+  // Smaller safe opening: a clearance keeps rotated coin edges off the ornate frame.
+  const INNER_HALF_X=.375*unit, INNER_TOP=.235*unit, INNER_BOTTOM=-.235*unit, MID_Y=0;
+  
   const FLOOR_Y=-(HEIGHT/2+FLOOR_BELOW)*unit;
   const DIAMETER=.075*unit, RADIUS=DIAMETER/2;
+  const SAFE_MARGIN=RADIUS*1.65;
+  const safeX=INNER_HALF_X-SAFE_MARGIN;
+  const safeTop=INNER_TOP-SAFE_MARGIN;
+  const safeBottom=INNER_BOTTOM+SAFE_MARGIN;
   const root=new THREE.Group(); anchor.group.add(root);
 
   const edge=new THREE.MeshStandardMaterial({color:0xb7832e,metalness:.82,roughness:.26});
@@ -92,10 +98,10 @@ async function initialize(){
     const xBase=lerp(-INNER_HALF_X+RADIUS*1.4, INNER_HALF_X-RADIUS*1.4, col/10);
     const jitterX=(noise(i+13)-.5)*RADIUS*.8;
     const rowCount=15;
-    const yBase=lerp(INNER_BOTTOM+RADIUS*1.1, MID_Y-RADIUS*1.4, clamp((row+noise(i+21)*.7)/(rowCount-1),0,1));
+    const yBase=lerp(safeBottom, MID_Y-RADIUS*1.75, clamp((row+noise(i+21)*.7)/(rowCount-1),0,1));
     const start=19 + Math.pow(i/(FILL_COUNT-1),1.25)*11 + noise(i+33)*.28; // 19..30
     add({kind:'fill', start, x:xBase+jitterX, yTarget:yBase,
-      yTop:INNER_TOP+RADIUS*(1.2+noise(i+41)*2.6), z:-.012,
+      yTop:safeTop, z:-.012,
       fillDur:.9+noise(i+55)*1.35, settle:(noise(i+67)-.5)*.015,
       spinBase:(noise(i+79)*2-1)*4.1});
   }
@@ -109,7 +115,7 @@ async function initialize(){
       phase:noise(i+111),
       xBase:(noise(i*2+1)*2-1)*(INNER_HALF_X-RADIUS*1.1),
       sway:(noise(i+121)-.5)*.065,
-      topY:INNER_TOP+RADIUS*(.7+noise(i+131)*2.2),
+      topY:safeTop,
       insideDur:1.45+noise(i+141)*1.2,
       spillBias:noise(i+151),
       vx:(noise(i+161)*2-1)*.21,
@@ -169,7 +175,7 @@ async function initialize(){
       const phase=((t-c.activeAt+c.phase*insideDur)%insideDur+insideDur)%insideDur;
       const p=phase/insideDur;
       const x=c.xBase + Math.sin((t+c.phase*8)*1.5)*c.sway;
-      const y=lerp(c.topY, INNER_BOTTOM+RADIUS*1.05, p);
+      const y=lerp(c.topY, safeBottom, p);
       const z=-.012;
       const spin=c.spinBase + phase*(4.4+Math.abs(c.spinBase));
       return {x,y,z,rx:Math.PI/2+c.tumble*.18,ry:spin,rz:c.tumble*.22};
@@ -177,7 +183,7 @@ async function initialize(){
 
     // Spill cycle: inside fall -> out and down -> hold 10s on floor -> respawn.
     const riseFactor=1-density*.1;
-    const tLand=solveLanding(INNER_BOTTOM+RADIUS*1.05,c.vy*riseFactor,c.g,FLOOR_Y+RADIUS);
+    const tLand=solveLanding(safeBottom,c.vy*riseFactor,c.g,FLOOR_Y+RADIUS);
     const outDur=insideDur + tLand;
     const cycle=outDur + c.hold + c.restGap;
     const phase=((t-c.activeAt+c.phase*cycle)%cycle+cycle)%cycle;
@@ -185,12 +191,12 @@ async function initialize(){
     if(phase<insideDur){
       const p=phase/insideDur;
       const x=c.xBase + Math.sin((phase+c.phase)*4)*c.sway;
-      const y=lerp(c.topY, INNER_BOTTOM+RADIUS*1.05, p);
+      const y=lerp(c.topY, safeBottom, p);
       return {x,y,z:-.009,rx:Math.PI/2+c.tumble*.18,ry:c.spinBase+phase*4.8,rz:c.tumble*.22};
     }
     if(phase<outDur){
       const dt=phase-insideDur;
-      const x0=c.xBase, y0=INNER_BOTTOM+RADIUS*1.05, z0=.02;
+      const x0=c.xBase, y0=safeBottom, z0=.02;
       const x=x0 + c.vx*dt, y=y0 + c.vy*riseFactor*dt - .5*c.g*dt*dt, z=z0 + c.vz*dt;
       const yy=Math.max(FLOOR_Y+RADIUS,y);
       return {x,y:yy,z,rx:Math.PI/2+dt*1.6,ry:c.spinBase+phase*(5.2+Math.abs(c.spinBase)*.4),rz:c.vx*3.2};
@@ -213,7 +219,15 @@ async function initialize(){
   function update(t){
     const counts=[0,0,0,0,0];
     for(const c of coins){
-      const pose=poseFor(c,t), mesh=meshes[c.type], idx=counts[c.type]++;
+      let pose=poseFor(c,t); const mesh=meshes[c.type], idx=counts[c.type]++;
+      // Fill / inside-stream coins are constrained to the picture opening.
+      // Only explicitly released coins may spill past the lower edge.
+      const insidePhase=c.kind==='fill' || (c.kind==='stream' && pose && pose.z<0);
+      if(pose && insidePhase){
+        pose.x=clamp(pose.x,-safeX,safeX);
+        pose.y=clamp(pose.y,safeBottom,safeTop);
+        pose.z=-.045; // behind the decorative frame's front face
+      }
       if(pose) place(pose); else hide();
       mesh.setMatrixAt(idx,dummy.matrix);
     }
