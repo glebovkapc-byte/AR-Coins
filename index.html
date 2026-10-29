@@ -1,10 +1,10 @@
 <!doctype html><html lang="ru"><head><meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>AR Монеты — 90 секунд (v3.8)</title>
+<title>AR Монеты — 90 секунд (v3.9)</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#11141a;color:#fff;font-family:system-ui}
 #scene{position:fixed;inset:0;width:100vw;height:100dvh}
-#ui{position:fixed;top:12px;left:12px;right:12px;max-width:520px;margin:auto;z-index:10;background:#171b25de;padding:12px;border-radius:14px;font-size:13px}
+#ui{position:fixed;top:12px;left:12px;right:12px;max-width:540px;margin:auto;z-index:10;background:#171b25de;padding:12px;border-radius:14px;font-size:13px}
 button{background:#f5c454;border:0;border-radius:8px;padding:9px 12px;font-weight:700;margin:4px 5px 0 0}
 #debug{display:none;margin-top:8px}input{width:96px}small{color:#ddd}#status{margin:5px 0}
 </style>
@@ -12,7 +12,7 @@ button{background:#f5c454;border:0;border-radius:8px;padding:9px 12px;font-weigh
 </head><body>
 <div id="scene"></div>
 <div id="ui">
-  <b>AR-картина · 90 секунд <span style="color:#f5c454">v3.8 · новая драматургия без звука</span></b>
+  <b>AR-картина · 90 секунд <span style="color:#f5c454">v3.9 · непрерывный поток</span></b>
   <div id="status">Нажми «Запустить AR»</div>
   <button id="start">Запустить AR</button>
   <button id="replay" hidden>Сначала</button>
@@ -21,7 +21,7 @@ button{background:#f5c454;border:0;border-radius:8px;padding:9px 12px;font-weigh
     <label>Размер сцены <input id="scale" type="range" min="0.6" max="1.6" step=".05" value="1"></label> <span id="sv">1</span><br>
     <label>Высота <input id="yoffset" type="range" min="-.2" max=".2" step=".01" value="0"></label> <span id="yv">0</span>
   </div>
-  <small>Сценарий: 1 монета → 1 / 3 / 5 / 7 → 10 секунд заполнения картины → водопад, разлёт и пол. Монеты на полу исчезают через 10 секунд.</small>
+  <small>Сценарий: 1 монета → 1 / 3 / 5 / 7 → непрерывный нарастающий поток. Нижняя половина картины постепенно заполняется монетами. После этого поток усиливается, монеты вываливаются наружу, а на полу лежат 10 секунд и исчезают.</small>
 </div>
 <script type="module">
 const $=id=>document.getElementById(id);
@@ -35,19 +35,17 @@ async function initialize(){
   const {renderer,scene,camera}=mindar; const anchor=mindar.addAnchor(0);
   renderer.outputColorSpace=THREE.SRGBColorSpace;
   scene.add(new THREE.HemisphereLight(0xffffff,0x7f623d,2.6));
-  const directional=new THREE.DirectionalLight(0xffffff,1.9); directional.position.set(-1,2,3); scene.add(directional);
+  const directional=new THREE.DirectionalLight(0xffffff,1.95); directional.position.set(-1,2,3); scene.add(directional);
 
-  // Real frame: 93 x 69 cm. MindAR target width == 1 unit.
   const WIDTH=.93, HEIGHT=.69, FLOOR_BELOW=1.25, unit=1/WIDTH;
-  const INNER_HALF_X=.405*unit, INNER_TOP=.265*unit, INNER_BOTTOM=-.265*unit;
+  const INNER_HALF_X=.405*unit, INNER_TOP=.265*unit, INNER_BOTTOM=-.265*unit, MID_Y=0;
   const FLOOR_Y=-(HEIGHT/2+FLOOR_BELOW)*unit;
   const DIAMETER=.075*unit, RADIUS=DIAMETER/2;
   const root=new THREE.Group(); anchor.group.add(root);
 
-  // Coin geometry and materials.
   const edge=new THREE.MeshStandardMaterial({color:0xb7832e,metalness:.82,roughness:.26});
   const textureLoader=new THREE.TextureLoader();
-  const meshes=[]; const countByType=84; // 84 * 5 = 420 instanced coins
+  const meshes=[]; const countByType=100; // 500 coins total
   for(let i=0;i<5;i++){
     const t=textureLoader.load(`./coin_${i+1}.png`); t.colorSpace=THREE.SRGBColorSpace;
     const face=new THREE.MeshStandardMaterial({map:t,metalness:.38,roughness:.35,side:THREE.DoubleSide,transparent:true});
@@ -64,194 +62,169 @@ async function initialize(){
   const easeOut=t=>1-Math.pow(1-clamp(t,0,1),2);
   const easeInOut=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
 
-  // ------------ Coin scripts ------------
-  const coins=[];
-  let id=0;
-  const add=(obj)=>coins.push({id:id++, type:id%5, ...obj});
+  const coins=[]; let cid=0; const add=(o)=>coins.push({id:cid,type:cid++%5,...o});
 
-  // 1) Opening rolling coin.
+  // Opening rolling coin.
   add({kind:'roll', start:0, rollDur:3.2, fallDur:1.35, hold:10,
        x0:-INNER_HALF_X+RADIUS*1.2, x1:INNER_HALF_X-RADIUS*1.2, z0:.012});
 
-  // 2) Burst groups: 1, then 3, then 5, then 7. Different speeds.
-  const burstPlan=[{count:1,start:6.2},{count:3,start:8.5},{count:5,start:11.2},{count:7,start:14.4}];
+  // 1 / 3 / 5 / 7 bursts.
+  const burstPlan=[{count:1,start:6.2},{count:3,start:8.5},{count:5,start:11.1},{count:7,start:14.0}];
   burstPlan.forEach((grp,gi)=>{
     for(let j=0;j<grp.count;j++){
       const spread=(grp.count===1)?0:(j/(grp.count-1)-.5);
-      add({kind:'burst', group:gi, start:grp.start+noise(gi*10+j)*.18,
+      add({kind:'burst', start:grp.start+noise(gi*10+j)*.16,
         x:spread*(INNER_HALF_X*1.15), y0:INNER_BOTTOM+RADIUS*.9,
         z0:.015+noise(gi*17+j)*.03,
-        vx:(spread*.12)+(noise(j+70)-.5)*.06,
-        vy:(.58+noise(j+9)*.24)*unit,
+        vx:(spread*.12)+(noise(j+70)-.5)*.07,
+        vy:(.55+noise(j+9)*.26)*unit,
         vz:.06+noise(j+gi*13)*.08,
-        g:(1.25+noise(j+44)*.85)*unit,
+        g:(1.25+noise(j+44)*.8)*unit,
         spinBase:(noise(j+17)*2-1)*7.5, hold:10
       });
     }
   });
 
-  // 3) Waterfall pool. First 10 sec (19..29) fills the image. After 29 it spills outward.
-  const WATER_COUNT=403; // total 420 coins overall
-  for(let i=0;i<WATER_COUNT;i++){
-    const rx=(noise(i*2+1)*2-1)*(INNER_HALF_X-RADIUS*1.1);
-    const restBand = i%11;
-    const row = Math.floor(i/11)%24;
-    const restY = lerp(INNER_BOTTOM+RADIUS*1.2, INNER_TOP-RADIUS*1.6, clamp((row+noise(i+40)*.65)/23,0,1));
-    const fillStart = 19 + noise(i*3+2)*10; // within the first 10 seconds of waterfall
-    add({kind:'water', start:fillStart,
-      restX:rx, restY,
-      fillDur:.75+noise(i+13)*1.3,
-      sway:(noise(i+30)-.5)*.055,
-      spillDelay:noise(i+60)*2.6,
-      vx:(noise(i+90)*2-1)*.19,
-      vy:(.28+noise(i+120)*.22)*unit,
-      vz:.10+noise(i+150)*.16,
-      g:(1.35+noise(i+180)*.85)*unit,
-      cycle:14.5+noise(i+210)*2.5,
-      topY:INNER_TOP+RADIUS*(.8+noise(i+240)*2.4),
+  // Coins that gradually fill ONLY the lower half of the picture and stay there.
+  const FILL_COUNT=155;
+  for(let i=0;i<FILL_COUNT;i++){
+    const col=i%11, row=Math.floor(i/11); // 11 columns, many rows
+    const xBase=lerp(-INNER_HALF_X+RADIUS*1.4, INNER_HALF_X-RADIUS*1.4, col/10);
+    const jitterX=(noise(i+13)-.5)*RADIUS*.8;
+    const rowCount=15;
+    const yBase=lerp(INNER_BOTTOM+RADIUS*1.1, MID_Y-RADIUS*1.4, clamp((row+noise(i+21)*.7)/(rowCount-1),0,1));
+    const start=19 + Math.pow(i/(FILL_COUNT-1),1.25)*11 + noise(i+33)*.28; // 19..30
+    add({kind:'fill', start, x:xBase+jitterX, yTarget:yBase,
+      yTop:INNER_TOP+RADIUS*(1.2+noise(i+41)*2.6), z:-.012,
+      fillDur:.9+noise(i+55)*1.35, settle:(noise(i+67)-.5)*.015,
+      spinBase:(noise(i+79)*2-1)*4.1});
+  }
+
+  // Continuous stream coins: always flowing, increasing in amount over time.
+  // Some stay inside, some spill outward after 29s, but there are no global breaks.
+  const STREAM_COUNT=328;
+  for(let i=0;i<STREAM_COUNT;i++){
+    const activated=19 + Math.pow(i/(STREAM_COUNT-1),1.7)*54 + noise(i+101)*.4; // more coins active later
+    add({kind:'stream', activeAt:activated,
+      phase:noise(i+111),
+      xBase:(noise(i*2+1)*2-1)*(INNER_HALF_X-RADIUS*1.1),
+      sway:(noise(i+121)-.5)*.065,
+      topY:INNER_TOP+RADIUS*(.7+noise(i+131)*2.2),
+      insideDur:1.45+noise(i+141)*1.2,
+      spillBias:noise(i+151),
+      vx:(noise(i+161)*2-1)*.21,
+      vy:(.22+noise(i+171)*.24)*unit,
+      vz:.09+noise(i+181)*.17,
+      g:(1.32+noise(i+191)*.86)*unit,
       hold:10,
-      spinBase:(noise(i+270)*2-1)*6.2,
-      tumble:(noise(i+310)*2-1)*2.4
+      restGap:.15+noise(i+201)*.25,
+      spinBase:(noise(i+211)*2-1)*5.8,
+      tumble:(noise(i+221)*2-1)*2.7
     });
   }
 
   let playing=false, shown=false, elapsed=0, t0=0;
   function reset(){ elapsed=0; t0=performance.now(); playing=shown; $('status').textContent='Анимация: 0 / 90 сек'; }
-  anchor.onTargetFound=()=>{ shown=true; if(!playing && elapsed<90){ playing=true; t0=performance.now()-elapsed*1000; } $('status').textContent='Картина распознана'; };
+  anchor.onTargetFound=()=>{ shown=true; if(!playing&&elapsed<90){ playing=true; t0=performance.now()-elapsed*1000; } $('status').textContent='Картина распознана'; };
   anchor.onTargetLost=()=>{ shown=false; if(playing){ elapsed=(performance.now()-t0)/1000; playing=false; } $('status').textContent='Наведите камеру на раму'; };
 
-  function placeCoin(x,y,z,rx,ry,rz,scale=1){ dummy.position.set(x,y,z); dummy.rotation.set(rx,ry,rz); dummy.scale.setScalar(scale); dummy.updateMatrix(); }
+  function place(p){ dummy.position.set(p.x,p.y,p.z); dummy.rotation.set(p.rx,p.ry,p.rz); dummy.scale.setScalar(p.s||1); dummy.updateMatrix(); }
 
-  function updateCoin(c,t){
-    const tt=t-c.start;
-    if(c.kind==='roll'){
-      const landY=FLOOR_Y+RADIUS; const landZ=.13;
-      if(tt<0) return null;
-      if(tt<=c.rollDur){
-        const p=easeInOut(tt/c.rollDur);
-        const x=lerp(c.x0,c.x1,p), y=INNER_BOTTOM+RADIUS, z=c.z0;
-        const spin=-tt*4.3;
-        return {x,y,z,rx:Math.PI/2,ry:spin,rz:0};
-      }
-      if(tt<=c.rollDur+c.fallDur){
-        const dt=tt-c.rollDur, p=clamp(dt/c.fallDur,0,1);
-        const x=c.x1 + p*.06, y=(INNER_BOTTOM+RADIUS) + (.08*unit)*p - .5*2.15*unit*dt*dt;
-        const z=lerp(c.z0,landZ,p);
-        const yy=Math.max(landY,y);
-        const spin=-c.rollDur*4.3-dt*2.6;
-        return {x,y:yy,z,rx:Math.PI/2+dt*.4,ry:spin,rz:dt*.12, landed:yy===landY, landTime:c.start+c.rollDur+c.fallDur};
-      }
-      if(tt<=c.rollDur+c.fallDur+c.hold){
-        const x=c.x1+.06, y=landY, z=landZ;
-        return {x,y,z,rx:Math.PI/2+.45,ry:-18.6,rz:.15};
-      }
-      return null;
+  function solveLanding(y0,vy,g,targetY){ const a=.5*g,b=-vy,c=targetY-y0; const d=Math.max(0,b*b-4*a*c); return (-b+Math.sqrt(d))/(2*a); }
+
+  function poseRoll(c,t){
+    const tt=t-c.start; if(tt<0) return null;
+    const landY=FLOOR_Y+RADIUS, landZ=.13;
+    if(tt<=c.rollDur){ const p=easeInOut(tt/c.rollDur); return {x:lerp(c.x0,c.x1,p), y:INNER_BOTTOM+RADIUS, z:c.z0, rx:Math.PI/2, ry:-tt*4.3, rz:0}; }
+    if(tt<=c.rollDur+c.fallDur){ const dt=tt-c.rollDur, p=clamp(dt/c.fallDur,0,1); const y=(INNER_BOTTOM+RADIUS)+(.08*unit)*p-.5*2.15*unit*dt*dt; return {x:c.x1+p*.06, y:Math.max(landY,y), z:lerp(c.z0,landZ,p), rx:Math.PI/2+dt*.4, ry:-c.rollDur*4.3-dt*2.6, rz:dt*.12}; }
+    if(tt<=c.rollDur+c.fallDur+c.hold) return {x:c.x1+.06,y:landY,z:landZ,rx:Math.PI/2+.45,ry:-18.6,rz:.15};
+    return null;
+  }
+
+  function poseBurst(c,t){
+    const tt=t-c.start; if(tt<0) return null; const landY=FLOOR_Y+RADIUS, rise=.24;
+    if(tt<rise){ const p=easeOut(tt/rise); return {x:c.x,y:lerp(c.y0,c.y0+.06*unit,p),z:lerp(c.z0,c.z0+.045,p),rx:Math.PI/2+tt*.8,ry:c.spinBase*tt,rz:c.spinBase*tt*.42}; }
+    const dt=tt-rise; const x=c.x+c.vx*dt, y=(c.y0+.06*unit)+c.vy*dt-.5*c.g*dt*dt, z=(c.z0+.045)+c.vz*dt; const spin=c.spinBase*rise+dt*(4.4+Math.abs(c.spinBase));
+    if(y>landY) return {x,y,z,rx:Math.PI/2+dt*1.15,ry:spin,rz:spin*.47};
+    const tLand=solveLanding(c.y0+.06*unit,c.vy,c.g,landY), total=rise+tLand+c.hold; if(tt<=total){ return {x:c.x+c.vx*tLand,y:landY,z:(c.z0+.045)+c.vz*tLand,rx:Math.PI/2+1.2,ry:spin*1.05,rz:c.vx*3}; }
+    return null;
+  }
+
+  function poseFill(c,t){
+    const tt=t-c.start; if(tt<0) return null;
+    if(tt<c.fillDur){ const p=easeOut(tt/c.fillDur); return {x:c.x,y:lerp(c.yTop,c.yTarget,p),z:c.z,rx:Math.PI/2+c.settle*p,ry:c.spinBase*tt*1.4,rz:c.settle*.7}; }
+    return {x:c.x,y:c.yTarget,z:c.z,rx:Math.PI/2+c.settle,ry:c.spinBase*.25,rz:c.settle*.7};
+  }
+
+  function poseStream(c,t){
+    if(t<c.activeAt) return null;
+    const density=clamp((t-19)/61,0,1); // grows until the end
+    const insideDur=Math.max(.95,c.insideDur - density*.22);
+    const overflowStart=29;
+    const spillProgress=clamp((t-overflowStart)/26,0,1); // after 29 spill grows steadily
+    const willSpill = (t>=overflowStart) && (c.spillBias < spillProgress*.92);
+
+    if(!willSpill){
+      // Continuous inside-only falling, immediate respawn -> no visible gaps.
+      const phase=((t-c.activeAt+c.phase*insideDur)%insideDur+insideDur)%insideDur;
+      const p=phase/insideDur;
+      const x=c.xBase + Math.sin((t+c.phase*8)*1.5)*c.sway;
+      const y=lerp(c.topY, INNER_BOTTOM+RADIUS*1.05, p);
+      const z=-.012;
+      const spin=c.spinBase + phase*(4.4+Math.abs(c.spinBase));
+      return {x,y,z,rx:Math.PI/2+c.tumble*.18,ry:spin,rz:c.tumble*.22};
     }
 
-    if(c.kind==='burst'){
-      if(tt<0) return null;
-      const landY=FLOOR_Y+RADIUS;
-      const rise=.24;
-      if(tt<rise){
-        const p=easeOut(tt/rise);
-        const x=c.x, y=lerp(c.y0,c.y0+.06*unit,p), z=lerp(c.z0,c.z0+.045,p);
-        const spin=c.spinBase*tt;
-        return {x,y,z,rx:Math.PI/2+tt*.8,ry:spin,rz:spin*.42};
-      }
-      const dt=tt-rise;
-      const x=c.x + c.vx*dt, y=(c.y0+.06*unit) + c.vy*dt - .5*c.g*dt*dt, z=(c.z0+.045) + c.vz*dt;
-      const spin=c.spinBase*rise + dt*(4.4+Math.abs(c.spinBase));
-      if(y>landY){
-        return {x,y,z,rx:Math.PI/2+dt*1.15,ry:spin,rz:spin*.47};
-      }
-      const tLand=(c.vy + Math.sqrt(c.vy*c.vy + 2*c.g*((c.y0+.06*unit)-landY)))/c.g;
-      const totalActive=rise+tLand+c.hold;
-      if(tt<=totalActive){
-        const lx=c.x + c.vx*tLand, lz=(c.z0+.045)+c.vz*tLand;
-        return {x:lx,y:landY,z:lz,rx:Math.PI/2+1.2,ry:spin*1.05,rz:c.vx*3};
-      }
-      return null;
-    }
+    // Spill cycle: inside fall -> out and down -> hold 10s on floor -> respawn.
+    const riseFactor=1-density*.1;
+    const tLand=solveLanding(INNER_BOTTOM+RADIUS*1.05,c.vy*riseFactor,c.g,FLOOR_Y+RADIUS);
+    const outDur=insideDur + tLand;
+    const cycle=outDur + c.hold + c.restGap;
+    const phase=((t-c.activeAt+c.phase*cycle)%cycle+cycle)%cycle;
 
-    if(c.kind==='water'){
-      if(t<c.start) return null;
-      // PHASE A: fill the picture for the first 10 seconds of the waterfall (19..29).
-      if(t<29){
-        const local=t-c.start;
-        if(local<0) return null;
-        const p=clamp(local/c.fillDur,0,1);
-        const x=c.restX + Math.sin(local*2.1 + c.id)*c.sway*(1-p);
-        const y=lerp(c.topY,c.restY,easeOut(p));
-        const z=-.012;
-        const spin=local*(2.6+Math.abs(c.spinBase)*.5);
-        return {x,y,z,rx:Math.PI/2+c.tumble*p,ry:spin,rz:c.tumble*.35};
-      }
-      // Between start and 29 the coin has already accumulated inside the frame.
-      const releaseGlobal = 29 + c.spillDelay;
-      if(t<releaseGlobal){
-        return {x:c.restX,y:c.restY,z:-.012,rx:Math.PI/2+c.tumble*.9,ry:c.spinBase,rz:c.tumble*.35};
-      }
-      // PHASE B: repeated spill cycles. Coins overflow, fly out, then remain on the floor for 10 sec.
-      const cyclePos=(t-releaseGlobal)%c.cycle;
-      const spillDur=1.75;
-      const holdStart=spillDur;
-      const holdEnd=spillDur+c.hold;
-      if(cyclePos<spillDur){
-        const dt=cyclePos;
-        const x=c.restX + c.vx*dt + Math.sin(dt*4+c.id)*.01;
-        const y=c.restY + c.vy*dt - .5*c.g*dt*dt;
-        const z=-.005 + c.vz*dt;
-        const spin=c.spinBase + dt*(5.2+Math.abs(c.spinBase));
-        if(y>FLOOR_Y+RADIUS){
-          return {x,y,z,rx:Math.PI/2+dt*1.6,ry:spin,rz:spin*.32};
-        }
-        // Clamp to floor if the ballistic estimate reaches it early.
-        const a=.5*c.g, b=-c.vy, cc=FLOOR_Y+RADIUS-c.restY;
-        const disc=Math.max(0,b*b-4*a*cc);
-        const tLand=(-b+Math.sqrt(disc))/(2*a);
-        const lx=c.restX + c.vx*tLand, lz=-.005 + c.vz*tLand;
-        return {x:lx,y:FLOOR_Y+RADIUS,z:lz,rx:Math.PI/2+1.55,ry:spin,rz:c.vx*2.4};
-      }
-      if(cyclePos<holdEnd){
-        const a=.5*c.g, b=-c.vy, cc=FLOOR_Y+RADIUS-c.restY;
-        const disc=Math.max(0,b*b-4*a*cc);
-        const tLand=(-b+Math.sqrt(disc))/(2*a);
-        const lx=c.restX + c.vx*tLand, lz=-.005 + c.vz*tLand;
-        return {x:lx,y:FLOOR_Y+RADIUS,z:lz,rx:Math.PI/2+1.55,ry:c.spinBase*1.2,rz:c.vx*2.4};
-      }
-      return null;
+    if(phase<insideDur){
+      const p=phase/insideDur;
+      const x=c.xBase + Math.sin((phase+c.phase)*4)*c.sway;
+      const y=lerp(c.topY, INNER_BOTTOM+RADIUS*1.05, p);
+      return {x,y,z:-.009,rx:Math.PI/2+c.tumble*.18,ry:c.spinBase+phase*4.8,rz:c.tumble*.22};
+    }
+    if(phase<outDur){
+      const dt=phase-insideDur;
+      const x0=c.xBase, y0=INNER_BOTTOM+RADIUS*1.05, z0=.02;
+      const x=x0 + c.vx*dt, y=y0 + c.vy*riseFactor*dt - .5*c.g*dt*dt, z=z0 + c.vz*dt;
+      const yy=Math.max(FLOOR_Y+RADIUS,y);
+      return {x,y:yy,z,rx:Math.PI/2+dt*1.6,ry:c.spinBase+phase*(5.2+Math.abs(c.spinBase)*.4),rz:c.vx*3.2};
+    }
+    if(phase<outDur+c.hold){
+      const lx=c.xBase + c.vx*tLand, lz=.02 + c.vz*tLand;
+      return {x:lx,y:FLOOR_Y+RADIUS,z:lz,rx:Math.PI/2+1.5,ry:c.spinBase*1.1,rz:c.vx*3.2};
     }
     return null;
   }
 
+  function poseFor(c,t){
+    if(c.kind==='roll') return poseRoll(c,t);
+    if(c.kind==='burst') return poseBurst(c,t);
+    if(c.kind==='fill') return poseFill(c,t);
+    if(c.kind==='stream') return poseStream(c,t);
+    return null;
+  }
+
   function update(t){
-    const counts=[0,0,0,0,0]; let visible=0;
+    const counts=[0,0,0,0,0];
     for(const c of coins){
-      const pose=updateCoin(c,t); const mesh=meshes[c.type]; const idx=counts[c.type]++;
-      if(pose){
-        placeCoin(pose.x,pose.y,pose.z,pose.rx,pose.ry,pose.rz,1); visible++;
-      } else hide();
+      const pose=poseFor(c,t), mesh=meshes[c.type], idx=counts[c.type]++;
+      if(pose) place(pose); else hide();
       mesh.setMatrixAt(idx,dummy.matrix);
     }
-    // Hide unused instances in each InstancedMesh.
-    meshes.forEach((m,mi)=>{
-      for(let i=counts[mi]; i<countByType; i++){ hide(); m.setMatrixAt(i,dummy.matrix); }
-      m.instanceMatrix.needsUpdate=true;
-    });
-    return visible;
+    meshes.forEach((m,mi)=>{ for(let i=counts[mi]; i<countByType; i++){ hide(); m.setMatrixAt(i,dummy.matrix); } m.instanceMatrix.needsUpdate=true; });
   }
 
   $('start').onclick=async()=>{
     const btn=$('start'); btn.disabled=true; $('status').textContent='Запуск камеры...';
     try{
-      await mindar.start();
-      $('replay').hidden=false; $('settings').hidden=false; btn.hidden=true; reset();
-      renderer.setAnimationLoop(()=>{
-        if(playing){ elapsed=(performance.now()-t0)/1000; if(elapsed>=90){ elapsed=90; playing=false; } }
-        update(elapsed);
-        if(playing) $('status').textContent=`Анимация: ${elapsed.toFixed(1)} / 90 сек`;
-        renderer.render(scene,camera);
-      });
+      await mindar.start(); $('replay').hidden=false; $('settings').hidden=false; btn.hidden=true; reset();
+      renderer.setAnimationLoop(()=>{ if(playing){ elapsed=(performance.now()-t0)/1000; if(elapsed>=90){ elapsed=90; playing=false; } } update(elapsed); if(playing) $('status').textContent=`Анимация: ${elapsed.toFixed(1)} / 90 сек`; renderer.render(scene,camera); });
     }catch(e){ console.error(e); $('status').textContent='Ошибка камеры: '+(e?.message||String(e)); btn.disabled=false; }
   };
   $('replay').onclick=reset;
@@ -261,8 +234,7 @@ async function initialize(){
 }
 
 $('start').addEventListener('click', async function firstStart(){
-  if(initialized||btnLock) return; btnLock=true;
-  const btn=$('start'); btn.disabled=true;
+  if(initialized||btnLock) return; btnLock=true; const btn=$('start'); btn.disabled=true;
   try{
     $('status').textContent='Проверяем файл распознавания...';
     const response=await fetch('./targets.mind',{cache:'no-store'});
