@@ -1,6 +1,6 @@
 <!doctype html><html lang="ru"><head><meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>AR Монеты — 90 секунд (v4.4)</title>
+<title>AR Монеты — 90 секунд (v4.5)</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#11141a;color:#fff;font-family:system-ui}
 #scene{position:fixed;inset:0;width:100vw;height:100dvh}
@@ -12,7 +12,7 @@ button{background:#f5c454;border:0;border-radius:8px;padding:9px 12px;font-weigh
 </head><body>
 <div id="scene"></div>
 <div id="ui">
-  <b>AR-картина · 90 секунд <span style="color:#f5c454">v4.4 · монеты внутри рамы</span></b>
+  <b>AR-картина · 90 секунд <span style="color:#f5c454">v4.5 · монеты внутри рамы</span></b>
   <div id="status">Нажми «Запустить AR»</div>
   <button id="start">Запустить AR</button>
   <button id="replay" hidden>Сначала</button>
@@ -51,7 +51,7 @@ async function initialize(){
 
   const edge=new THREE.MeshStandardMaterial({color:0xb7832e,metalness:.82,roughness:.26});
   const textureLoader=new THREE.TextureLoader();
-  const meshes=[]; const countByType=100; // 500 coins total
+  const meshes=[]; const countByType=250; // 1224 coins total, shared via GPU instancing
   for(let i=0;i<5;i++){
     const t=textureLoader.load(`./coin_${i+1}.png`); t.colorSpace=THREE.SRGBColorSpace;
     const face=new THREE.MeshStandardMaterial({map:t,metalness:.38,roughness:.35,side:THREE.DoubleSide,transparent:true});
@@ -93,7 +93,7 @@ async function initialize(){
 
   // Continuous waterfall: no static accumulation. Every coin starts at the TOP.
   // Gradual activation over the full 90-second performance.
-  const STREAM_COUNT=483;
+  const STREAM_COUNT=1207;
   for(let i=0;i<STREAM_COUNT;i++){
     const k=i/(STREAM_COUNT-1);
     add({kind:'stream',
@@ -105,7 +105,7 @@ async function initialize(){
       insideDur:1.45+noise(i+141)*1.45,
       // Only a fraction of the instances spill onto the floor;
       // the rest recycle continuously through the frame.
-      spill:i%4!==0,
+      spill:i%10!==0,
       vx:(noise(i+161)*2-1)*.21,
       vy:(.12+noise(i+171)*.19)*unit,
       vz:.07+noise(i+181)*.13,
