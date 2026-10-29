@@ -1,7 +1,7 @@
 <!doctype html><html lang="ru"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><title>AR Монеты — 90 секунд (v3.5 — металлический звук и финал)</title>
 <style>*{box-sizing:border-box}body{margin:0;background:#121518;color:white;font-family:system-ui}#scene{position:fixed;inset:0;width:100vw;height:100dvh}#ui{position:fixed;top:12px;left:12px;right:12px;max-width:480px;margin:auto;z-index:10;background:#171b25de;padding:12px;border-radius:14px;font-size:13px}button{background:#f5c454;border:0;border-radius:8px;padding:9px 12px;font-weight:700;margin:4px 5px 0 0}input{width:95px}#debug{display:none;margin-top:8px}#status{margin:5px 0}small{color:#ddd}</style>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/renderers/CSS3DRenderer.js":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/renderers/CSS3DRenderer.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/","mindar-image-three":"https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"}}</script></head>
-<body><div id="scene"></div><div id="ui"><b>AR-картина · 90 секунд <span style="color:#f5c454">v3.5 · финал</span></b><div id="status">Нажми «Запустить AR»</div><button id="start">Запустить AR</button><button id="replay" hidden>Сначала</button><button id="settings" hidden>Настройки</button><button id="mute" hidden>🔊 Звук вкл.</button><div id="debug"><label>Размер сцены <input id="scale" type="range" min="0.6" max="1.6" step=".05" value="1"></label><span id="sv">1</span><br><label>Высота <input id="yoffset" type="range" min="-.2" max=".2" step=".01" value="0"></label><span id="yv">0</span><br><label>Громкость <input id="volume" type="range" min="0" max="0.6" step="0.05" value="0.3"></label><span id="vv">30%</span></div><small>Дизайны: 5 · после 60 с — плотный водопад · пол: 125 см ниже нижнего края рамы · рамка: 93 × 69 см</small></div>
+<body><div id="scene"></div><div id="ui"><b>AR-картина · 90 секунд <span style="color:#f5c454">v3.6 · мощный финал</span></b><div id="status">Нажми «Запустить AR»</div><button id="start">Запустить AR</button><button id="replay" hidden>Сначала</button><button id="settings" hidden>Настройки</button><button id="mute" hidden>🔊 Звук вкл.</button><div id="debug"><label>Размер сцены <input id="scale" type="range" min="0.6" max="1.6" step=".05" value="1"></label><span id="sv">1</span><br><label>Высота <input id="yoffset" type="range" min="-.2" max=".2" step=".01" value="0"></label><span id="yv">0</span><br><label>Громкость <input id="volume" type="range" min="0" max="0.6" step="0.05" value="0.3"></label><span id="vv">30%</span></div><small>Дизайны: 5 · после 60 с — звуковое нарастание к 70 с · пол: 125 см ниже нижнего края рамы · рамка: 93 × 69 см</small></div>
 <script type="module">
 const $=id=>document.getElementById(id);
 let initialized=false,btnLock=false,preUnlockedAudio=null;
@@ -118,16 +118,23 @@ function soundStep(t){
  }
  // Waterfall grows from sparse clinks to a more closely spaced cascade.
  if(t>=20){
-  const growth=Math.min(1,(t-20)/15);
-  const climax=Math.min(1,Math.max(0,(t-60)/25));
-  const interval=Math.max(.075,.40-growth*.30-climax*.025);
+  // The visual coin density grows continuously; the sonic climax lands at 70s.
+  // Stronger *perceived* intensity comes from more varied collisions and a layered
+  // rustle, not from removing the headphone-friendly master dynamics ceiling.
+  const growth=Math.min(1,Math.max(0,(t-20)/40));
+  const climax=Math.min(1,Math.max(0,(t-60)/10));
+  const interval=Math.max(.075,.42-growth*.18-climax*.165);
   const tick=Math.floor((t-20)/interval);
   if(tick!==lastWaterTick){
     lastWaterTick=tick;
-    coinClink(.35+.42*growth,.8+noise(tick+223)*.55);
-    if(growth>.55 && noise(tick+41)>.48)coinClink(.23,.9+noise(tick)*.5);
+    coinClink(.30+.36*growth+.17*climax,.8+noise(tick+223)*.55);
+    if(growth>.4 && noise(tick+41)>(.76-.34*climax))coinClink(.20+.12*climax,.9+noise(tick)*.5);
+    if(climax>.3 && noise(tick+154)>.65)coinClink(.22,.7+noise(tick+330)*.7);
   }
-  if(ambience){ambience.gain.setTargetAtTime((.004+.035*growth+.055*climax),ctx.currentTime,.12);}
+  if(ambience){
+    const rustle=.003+.025*growth+.063*climax;
+    ambience.gain.setTargetAtTime(rustle,ctx.currentTime,.18);
+  }
  }else if(ambience){ambience.gain.setTargetAtTime(0,ctx.currentTime,.07);}
  lastAudioT=t;
 }
