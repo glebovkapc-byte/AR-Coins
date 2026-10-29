@@ -1,211 +1,275 @@
-<!doctype html><html lang="ru"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><title>AR Монеты — 90 секунд (v3.7 — живой водопад и насыщенный звук)</title>
-<style>*{box-sizing:border-box}body{margin:0;background:#121518;color:white;font-family:system-ui}#scene{position:fixed;inset:0;width:100vw;height:100dvh}#ui{position:fixed;top:12px;left:12px;right:12px;max-width:480px;margin:auto;z-index:10;background:#171b25de;padding:12px;border-radius:14px;font-size:13px}button{background:#f5c454;border:0;border-radius:8px;padding:9px 12px;font-weight:700;margin:4px 5px 0 0}input{width:95px}#debug{display:none;margin-top:8px}#status{margin:5px 0}small{color:#ddd}</style>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/renderers/CSS3DRenderer.js":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/renderers/CSS3DRenderer.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/","mindar-image-three":"https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"}}</script></head>
-<body><div id="scene"></div><div id="ui"><b>AR-картина · 90 секунд <span style="color:#f5c454">v3.7 · только живые монеты</span></b><div id="status">Нажми «Запустить AR»</div><button id="start">Запустить AR</button><button id="replay" hidden>Сначала</button><button id="settings" hidden>Настройки</button><button id="mute" hidden>🔊 Звук вкл.</button><div id="debug"><label>Размер сцены <input id="scale" type="range" min="0.6" max="1.6" step=".05" value="1"></label><span id="sv">1</span><br><label>Высота <input id="yoffset" type="range" min="-.2" max=".2" step=".01" value="0"></label><span id="yv">0</span><br><label>Громкость <input id="volume" type="range" min="0" max="0.6" step="0.05" value="0.3"></label><span id="vv">30%</span></div><small>Дизайны: 5 · после 60 с — плотный поток и металлический звук · пол: 125 см ниже нижнего края рамы · рамка: 93 × 69 см</small></div>
+<!doctype html><html lang="ru"><head><meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>AR Монеты — 90 секунд (v3.8)</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#11141a;color:#fff;font-family:system-ui}
+#scene{position:fixed;inset:0;width:100vw;height:100dvh}
+#ui{position:fixed;top:12px;left:12px;right:12px;max-width:520px;margin:auto;z-index:10;background:#171b25de;padding:12px;border-radius:14px;font-size:13px}
+button{background:#f5c454;border:0;border-radius:8px;padding:9px 12px;font-weight:700;margin:4px 5px 0 0}
+#debug{display:none;margin-top:8px}input{width:96px}small{color:#ddd}#status{margin:5px 0}
+</style>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/renderers/CSS3DRenderer.js":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/renderers/CSS3DRenderer.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/","mindar-image-three":"https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"}}</script>
+</head><body>
+<div id="scene"></div>
+<div id="ui">
+  <b>AR-картина · 90 секунд <span style="color:#f5c454">v3.8 · новая драматургия без звука</span></b>
+  <div id="status">Нажми «Запустить AR»</div>
+  <button id="start">Запустить AR</button>
+  <button id="replay" hidden>Сначала</button>
+  <button id="settings" hidden>Настройки</button>
+  <div id="debug">
+    <label>Размер сцены <input id="scale" type="range" min="0.6" max="1.6" step=".05" value="1"></label> <span id="sv">1</span><br>
+    <label>Высота <input id="yoffset" type="range" min="-.2" max=".2" step=".01" value="0"></label> <span id="yv">0</span>
+  </div>
+  <small>Сценарий: 1 монета → 1 / 3 / 5 / 7 → 10 секунд заполнения картины → водопад, разлёт и пол. Монеты на полу исчезают через 10 секунд.</small>
+</div>
 <script type="module">
 const $=id=>document.getElementById(id);
-let initialized=false,btnLock=false,preUnlockedAudio=null;
+let initialized=false, btnLock=false;
 async function initialize(){
   $('status').textContent='Загружаем библиотеки AR...';
   const [THREE, mindModule] = await Promise.all([import('three'), import('mindar-image-three')]);
   const { MindARThree } = mindModule;
 
+  const mindar=new MindARThree({container:$('scene'),imageTargetSrc:'./targets.mind',maxTrack:1});
+  const {renderer,scene,camera}=mindar; const anchor=mindar.addAnchor(0);
+  renderer.outputColorSpace=THREE.SRGBColorSpace;
+  scene.add(new THREE.HemisphereLight(0xffffff,0x7f623d,2.6));
+  const directional=new THREE.DirectionalLight(0xffffff,1.9); directional.position.set(-1,2,3); scene.add(directional);
 
-const mindar=new MindARThree({container:$('scene'),imageTargetSrc:'./targets.mind',maxTrack:1});
-const {renderer,scene,camera}=mindar,anchor=mindar.addAnchor(0); renderer.outputColorSpace=THREE.SRGBColorSpace;
-scene.add(new THREE.HemisphereLight(0xffffff,0x7f623d,2.6));const directional=new THREE.DirectionalLight(0xffffff,2);directional.position.set(-1,2,3);scene.add(directional);
-// MindAR target spans one world unit in X, representing the real 93-cm-wide frame.
-const WIDTH=.93,HEIGHT=.69,FLOOR_BELOW=1.25,unit=1/WIDTH;
-const INNER_HALF_X=.405*unit, INNER_TOP=.265*unit, INNER_BOTTOM=-.265*unit;
-const EDGE_Y=-HEIGHT/2*unit, FLOOR_Y=-(HEIGHT/2+FLOOR_BELOW)*unit;
-const DIAMETER=.075*unit,RADIUS=DIAMETER/2;
-const root=new THREE.Group();anchor.group.add(root);root.rotation.set(0,0,0);
-const mats=[],meshes=[],countByType=220,total=countByType*5,dummy=new THREE.Object3D();
-const edge=new THREE.MeshStandardMaterial({color:0xb7832e,metalness:.76,roughness:.28});
-const textureLoader=new THREE.TextureLoader();
-for(let i=0;i<5;i++){
- const t=textureLoader.load(`./coin_${i+1}.png`);t.colorSpace=THREE.SRGBColorSpace;
- const face=new THREE.MeshStandardMaterial({map:t,metalness:.35,roughness:.34,side:THREE.DoubleSide,transparent:true});
- const geo=new THREE.CylinderGeometry(RADIUS,RADIUS,RADIUS*.13,40,1,false);
- const mesh=new THREE.InstancedMesh(geo,[edge,face,face],countByType);mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.frustumCulled=false;root.add(mesh);meshes.push(mesh);
-}
-// No static coin wall texture: only animated 3D coins are visible.
-// Stable deterministic positions: every replay is identical.
-function noise(n){let x=Math.sin(n*127.1+78.233)*43758.5453;return x-Math.floor(x)}
-const coins=Array.from({length:total},(_,i)=>({i,type:i%5,t:0,sx:0,sy:0,sz:0,mode:'fall',speed:1,phase:noise(i+1)*6.28}));
-function setup(){for(let i=0;i<total;i++){
- const c=coins[i];c.type=i%5;
- if(i===0){c.t=0;c.mode='roll';continue;}
- if(i<=10){c.t=6+(i-1)*1.35;c.mode='single';}
- else{const j=i-11;c.t=(i<425?20+j*.13+noise(i)*3:60+noise(i*7)*14);c.mode='water';}
- c.sx=(noise(i*3+1)*2-1)*(INNER_HALF_X-RADIUS*1.1);
- c.sy=INNER_TOP+RADIUS*(1+noise(i+4)*4);
- c.sz=-.012;
- c.speed=(.46+noise(i+9)*.38)*unit;
- }}setup();
-// Web Audio: all sounds are driven by the SAME elapsed time as the coin animation.
-// No external audio files, free and safe capped sound. Enabled by a user's tap.
-let ctx=null,master=null, ambience=null, lastAudioT=0, muted=false, volume=.30;
-function initAudio(){
- if(ctx)return;
- const A=window.AudioContext||window.webkitAudioContext;
- if(!A)throw new Error('Web Audio не поддерживается браузером');
- ctx=preUnlockedAudio||new A();
- master=ctx.createGain(); master.gain.value=0;
- const compressor=ctx.createDynamicsCompressor();
- compressor.threshold.value=-20;compressor.knee.value=15;compressor.ratio.value=10;
- compressor.attack.value=.006;compressor.release.value=.18;
- master.connect(compressor);compressor.connect(ctx.destination);
- // Repeating soft hiss: many small impacts merge into a quiet, dense texture.
- const len=Math.floor(ctx.sampleRate*2),b=ctx.createBuffer(1,len,ctx.sampleRate),d=b.getChannelData(0);
- let prev=0; for(let i=0;i<len;i++){const n=(Math.random()*2-1);prev=prev*.93+n*.07;d[i]=prev;}
- const source=ctx.createBufferSource();source.buffer=b;source.loop=true;
- const filter=ctx.createBiquadFilter();filter.type='bandpass';filter.frequency.value=3600;filter.Q.value=.45;
- ambience=ctx.createGain();ambience.gain.value=0;
- source.connect(filter);filter.connect(ambience);ambience.connect(master);source.start();
-}
-function targetLevel(){return !shown||muted?0:volume;}
-function applyVolume(){if(!ctx)return;const now=ctx.currentTime;master.gain.cancelScheduledValues(now);master.gain.setTargetAtTime(targetLevel(),now,.085);}
-// Inharmonic bell modes + brief filtered metallic attack. Small peak level is
-// deliberate for headphones. Every event uses the same animation clock.
-function coinClink(strength=1,pitch=1){
- if(!ctx||!shown||muted)return;
- const now=ctx.currentTime;
- const fundamental=(680+Math.random()*180)*pitch;
- const env=ctx.createGain();
- const level=Math.min(.048,.013*Math.max(.15,strength));
- env.gain.setValueAtTime(.00001,now);
- env.gain.exponentialRampToValueAtTime(level,now+.003);
- env.gain.exponentialRampToValueAtTime(level*.28,now+.052);
- env.gain.exponentialRampToValueAtTime(.00001,now+.58);
- const pan=ctx.createStereoPanner?ctx.createStereoPanner():null;
- if(pan){pan.pan.value=(Math.random()-.5)*.7;env.connect(pan);pan.connect(master);}else env.connect(master);
- for(const [ratio,amp,decay] of [[1,1,.55],[1.48,.72,.38],[2.19,.46,.31],[2.97,.29,.25],[4.12,.14,.16],[.56,.20,.19]]){
-   const osc=ctx.createOscillator(),g=ctx.createGain();
-   osc.type='sine';osc.frequency.value=fundamental*ratio;
-   g.gain.setValueAtTime(amp,now);
-   g.gain.exponentialRampToValueAtTime(.0001,now+decay);
-   osc.connect(g);g.connect(env);osc.start(now);osc.stop(now+decay+.015);
- }
- // Bright short tap: metal-on-metal contact, not just a pure bell.
- const nlen=Math.floor(ctx.sampleRate*.035);
- const buffer=ctx.createBuffer(1,nlen,ctx.sampleRate),d=buffer.getChannelData(0);
- for(let i=0;i<nlen;i++)d[i]=(Math.random()*2-1)*Math.exp(-i/nlen*9);
- const noiseNode=ctx.createBufferSource();noiseNode.buffer=buffer;
- const hp=ctx.createBiquadFilter();hp.type='highpass';hp.frequency.value=3200;
- const noiseGain=ctx.createGain();noiseGain.gain.value=level*.48;
- noiseNode.connect(hp);hp.connect(noiseGain);noiseGain.connect(master);
- noiseNode.start(now);noiseNode.stop(now+.036);
-}
-let lastRollTick=-1, lastWaterTick=-1, lastSingles=new Set(), playedFirstImpact=false;
-function resetSound(){lastAudioT=0;lastRollTick=-1;lastWaterTick=-1;lastSingles.clear();playedFirstImpact=false;if(ambience&&ctx)ambience.gain.setTargetAtTime(0,ctx.currentTime,.035);}
-function soundStep(t){
- if(!ctx||!playing||!shown||muted)return;
- // Position-synchronised rolling: rhythmic rim taps as the first coin rolls.
- if(t<3.2){const tick=Math.floor(t/.18);if(tick!==lastRollTick){lastRollTick=tick;if(t>.12)coinClink(.23,1.05);}}
- // First drop: ballistically approximately 0.52 s after the rim ends.
- if(t>=3.72&&!playedFirstImpact){playedFirstImpact=true;coinClink(1.65,.78);}
- // One physical impact for each of the 10 individually launched coins.
- for(let i=1;i<=10;i++){
-   const impact=6+(i-1)*1.35+1.15;
-   if(t>=impact&&!lastSingles.has(i)){lastSingles.add(i);coinClink(1.1,.78+noise(i+84)*.4);}
- }
- // Waterfall grows from sparse clinks to a more closely spaced cascade.
- if(t>=20){
-  // The visual coin density grows continuously; the sonic climax lands at 70s.
-  // Stronger *perceived* intensity comes from more varied collisions and a layered
-  // rustle, not from removing the headphone-friendly master dynamics ceiling.
-  const growth=Math.min(1,Math.max(0,(t-20)/40));
-  const climax=Math.min(1,Math.max(0,(t-60)/10));
-  const interval=Math.max(.085,.40-growth*.16-climax*.155);
-  const tick=Math.floor((t-20)/interval);
-  if(tick!==lastWaterTick){
-    lastWaterTick=tick;
-    coinClink(.30+.36*growth+.17*climax,.8+noise(tick+223)*.55);
-    if(growth>.4 && noise(tick+41)>(.76-.34*climax))coinClink(.20+.12*climax,.9+noise(tick)*.5);
-    if(climax>.3 && noise(tick+154)>.55)coinClink(.28,.7+noise(tick+330)*.7);
+  // Real frame: 93 x 69 cm. MindAR target width == 1 unit.
+  const WIDTH=.93, HEIGHT=.69, FLOOR_BELOW=1.25, unit=1/WIDTH;
+  const INNER_HALF_X=.405*unit, INNER_TOP=.265*unit, INNER_BOTTOM=-.265*unit;
+  const FLOOR_Y=-(HEIGHT/2+FLOOR_BELOW)*unit;
+  const DIAMETER=.075*unit, RADIUS=DIAMETER/2;
+  const root=new THREE.Group(); anchor.group.add(root);
+
+  // Coin geometry and materials.
+  const edge=new THREE.MeshStandardMaterial({color:0xb7832e,metalness:.82,roughness:.26});
+  const textureLoader=new THREE.TextureLoader();
+  const meshes=[]; const countByType=84; // 84 * 5 = 420 instanced coins
+  for(let i=0;i<5;i++){
+    const t=textureLoader.load(`./coin_${i+1}.png`); t.colorSpace=THREE.SRGBColorSpace;
+    const face=new THREE.MeshStandardMaterial({map:t,metalness:.38,roughness:.35,side:THREE.DoubleSide,transparent:true});
+    const geo=new THREE.CylinderGeometry(RADIUS,RADIUS,RADIUS*.13,40,1,false);
+    const mesh=new THREE.InstancedMesh(geo,[edge,face,face],countByType);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.frustumCulled=false;
+    root.add(mesh); meshes.push(mesh);
   }
-  if(ambience){
-    const rustle=.006+.034*growth+.078*climax;
-    ambience.gain.setTargetAtTime(rustle,ctx.currentTime,.18);
+  const dummy=new THREE.Object3D();
+  const hide=()=>{dummy.position.set(0,0,-999);dummy.scale.setScalar(.00001);dummy.updateMatrix();};
+  const noise=n=>{const x=Math.sin(n*127.1+78.233)*43758.5453;return x-Math.floor(x)};
+  const lerp=(a,b,t)=>a+(b-a)*t;
+  const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+  const easeOut=t=>1-Math.pow(1-clamp(t,0,1),2);
+  const easeInOut=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+
+  // ------------ Coin scripts ------------
+  const coins=[];
+  let id=0;
+  const add=(obj)=>coins.push({id:id++, type:id%5, ...obj});
+
+  // 1) Opening rolling coin.
+  add({kind:'roll', start:0, rollDur:3.2, fallDur:1.35, hold:10,
+       x0:-INNER_HALF_X+RADIUS*1.2, x1:INNER_HALF_X-RADIUS*1.2, z0:.012});
+
+  // 2) Burst groups: 1, then 3, then 5, then 7. Different speeds.
+  const burstPlan=[{count:1,start:6.2},{count:3,start:8.5},{count:5,start:11.2},{count:7,start:14.4}];
+  burstPlan.forEach((grp,gi)=>{
+    for(let j=0;j<grp.count;j++){
+      const spread=(grp.count===1)?0:(j/(grp.count-1)-.5);
+      add({kind:'burst', group:gi, start:grp.start+noise(gi*10+j)*.18,
+        x:spread*(INNER_HALF_X*1.15), y0:INNER_BOTTOM+RADIUS*.9,
+        z0:.015+noise(gi*17+j)*.03,
+        vx:(spread*.12)+(noise(j+70)-.5)*.06,
+        vy:(.58+noise(j+9)*.24)*unit,
+        vz:.06+noise(j+gi*13)*.08,
+        g:(1.25+noise(j+44)*.85)*unit,
+        spinBase:(noise(j+17)*2-1)*7.5, hold:10
+      });
+    }
+  });
+
+  // 3) Waterfall pool. First 10 sec (19..29) fills the image. After 29 it spills outward.
+  const WATER_COUNT=403; // total 420 coins overall
+  for(let i=0;i<WATER_COUNT;i++){
+    const rx=(noise(i*2+1)*2-1)*(INNER_HALF_X-RADIUS*1.1);
+    const restBand = i%11;
+    const row = Math.floor(i/11)%24;
+    const restY = lerp(INNER_BOTTOM+RADIUS*1.2, INNER_TOP-RADIUS*1.6, clamp((row+noise(i+40)*.65)/23,0,1));
+    const fillStart = 19 + noise(i*3+2)*10; // within the first 10 seconds of waterfall
+    add({kind:'water', start:fillStart,
+      restX:rx, restY,
+      fillDur:.75+noise(i+13)*1.3,
+      sway:(noise(i+30)-.5)*.055,
+      spillDelay:noise(i+60)*2.6,
+      vx:(noise(i+90)*2-1)*.19,
+      vy:(.28+noise(i+120)*.22)*unit,
+      vz:.10+noise(i+150)*.16,
+      g:(1.35+noise(i+180)*.85)*unit,
+      cycle:14.5+noise(i+210)*2.5,
+      topY:INNER_TOP+RADIUS*(.8+noise(i+240)*2.4),
+      hold:10,
+      spinBase:(noise(i+270)*2-1)*6.2,
+      tumble:(noise(i+310)*2-1)*2.4
+    });
   }
- }else if(ambience){ambience.gain.setTargetAtTime(0,ctx.currentTime,.07);}
- lastAudioT=t;
-}
-$('mute').onclick=()=>{muted=!muted;$('mute').textContent=muted?'🔇 Звук выкл.':'🔊 Звук вкл.';applyVolume();};
-$('volume').oninput=e=>{volume=Math.max(0,Math.min(.6,Number(e.target.value)));$('vv').textContent=Math.round(volume*100)+'%';applyVolume();};
 
-let playing=false,shown=false,t0=0,pausedAt=0,elapsed=0;
-function reset(){resetSound();elapsed=0;t0=performance.now();playing=shown;$('status').textContent='Анимация: 0 / 90 сек'}
-anchor.onTargetFound=()=>{shown=true;applyVolume();if(!playing&&elapsed<90){playing=true;t0=performance.now()-elapsed*1000;}$('status').textContent='Картина распознана';};
-anchor.onTargetLost=()=>{shown=false;applyVolume();if(playing){elapsed=(performance.now()-t0)/1000;playing=false;}$('status').textContent='Наведите камеру на раму';};
-const rot=new THREE.Euler(),quat=new THREE.Quaternion(),temp=new THREE.Vector3();
-function hide(){dummy.position.set(0,0,-1000);dummy.scale.setScalar(.00001);dummy.updateMatrix();}
-function update(t){const counts=[0,0,0,0,0];let display=0;
- for(const c of coins){let x=0,y=0,z=0,spin=0,tilt=0,visible=false,local=t-c.t;const duration=2.3;
- if(local>=0){
- if(c.mode==='roll'){
-  // Upright coin rolls along the inside bottom edge, then falls to a calibrated virtual floor.
-  if(local<3.2){x=-INNER_HALF_X+RADIUS+(INNER_HALF_X*2-RADIUS*2)*local/3.2;y=INNER_BOTTOM+RADIUS;z=.012;spin=-local*4.3;visible=true;}
-  else if(local<9){const dt=local-3.2;x=INNER_HALF_X-RADIUS+Math.min(dt,1)*.07;y=INNER_BOTTOM+RADIUS-0.5*9.81*unit*dt*dt;const bottom=FLOOR_Y+RADIUS;if(y<bottom){y=bottom;spin*=.9;}z=.10;spin=-13.7-dt*2;visible=dt<5;}
- }else if(c.mode==='single'){
-  const p=local;
-  x=c.sx+Math.sin(p*2+c.phase)*.045;
-  // Brief emergence from bottom edge, followed by free fall outside the frame.
-  y=INNER_BOTTOM+RADIUS+ Math.min(p,.38)*.18*unit- Math.max(0,p-.38)**2*2.7*unit;
-  z=.04+Math.min(p,1)*.12;spin=p*7+c.phase;tilt=p*2;
-  if(y<FLOOR_Y+RADIUS){y=FLOOR_Y+RADIUS;}
-  visible=p<4.6;
- }else{
-  const cycle=2.9+noise(c.i+11)*1.2;
-  let p=local%cycle;
-  x=c.sx+Math.sin(p*1.8+c.phase)*(.014+.03*noise(c.i+12));
-  y=c.sy-.5*(1.8+noise(c.i+15)*1.9)*unit*p*p;
-  z=-.015;
-  spin=p*(4+noise(c.i+30)*7);tilt=p*2;
-  // Waterfall is hidden behind the painted frame: only visible inside opening.
-  const inside=x> -INNER_HALF_X+RADIUS*.7 && x<INNER_HALF_X-RADIUS*.7 && y<INNER_TOP-RADIUS*.6 && y>INNER_BOTTOM+RADIUS*.6;
-  visible=inside && p<cycle;
-  // After 35s some falling coins spill forward and down toward the floor.
-  if(t>35 && c.i<425 && c.i%9===0 && p>1.05){z=.10+(p-1.05)*.07;y=INNER_BOTTOM+.03-(p-1.05)*.95*unit;visible=y>FLOOR_Y-RADIUS&&p<3.3;}
- }
- }
- const mesh=meshes[c.type],index=counts[c.type]++;
- if(visible){
- dummy.position.set(x,y,z);dummy.rotation.set(Math.PI/2+tilt,spin,c.mode==='roll'?0:spin*.47);dummy.scale.setScalar(1);dummy.updateMatrix();display++;
- }else{hide();}
- mesh.setMatrixAt(index,dummy.matrix);
- }
- meshes.forEach(m=>{m.instanceMatrix.needsUpdate=true;});
- return display;
-}
-$('start').onclick=async()=>{const btn=$('start');initAudio();await ctx.resume();btn.disabled=true;$('status').textContent='Запуск камеры...';try{await mindar.start();$('replay').hidden=false;$('settings').hidden=false;$('mute').hidden=false;btn.hidden=true;reset();renderer.setAnimationLoop(()=>{if(playing){elapsed=(performance.now()-t0)/1000;if(elapsed>=90){elapsed=90;playing=false;applyVolume();}}update(elapsed);soundStep(elapsed);if(playing)$('status').textContent=`Анимация: ${elapsed.toFixed(1)} / 90 сек`;renderer.render(scene,camera);});}catch(e){console.error(e);$('status').textContent='Ошибка камеры: '+(e?.message||String(e));btn.disabled=false;}};
-$('replay').onclick=reset;
-$('settings').onclick=()=>$('debug').style.display=$('debug').style.display==='block'?'none':'block';
-$('scale').oninput=e=>{root.scale.setScalar(+e.target.value);$('sv').textContent=e.target.value;};
-$('yoffset').oninput=e=>{root.position.y=+e.target.value;$('yv').textContent=e.target.value;};
+  let playing=false, shown=false, elapsed=0, t0=0;
+  function reset(){ elapsed=0; t0=performance.now(); playing=shown; $('status').textContent='Анимация: 0 / 90 сек'; }
+  anchor.onTargetFound=()=>{ shown=true; if(!playing && elapsed<90){ playing=true; t0=performance.now()-elapsed*1000; } $('status').textContent='Картина распознана'; };
+  anchor.onTargetLost=()=>{ shown=false; if(playing){ elapsed=(performance.now()-t0)/1000; playing=false; } $('status').textContent='Наведите камеру на раму'; };
 
+  function placeCoin(x,y,z,rx,ry,rz,scale=1){ dummy.position.set(x,y,z); dummy.rotation.set(rx,ry,rz); dummy.scale.setScalar(scale); dummy.updateMatrix(); }
+
+  function updateCoin(c,t){
+    const tt=t-c.start;
+    if(c.kind==='roll'){
+      const landY=FLOOR_Y+RADIUS; const landZ=.13;
+      if(tt<0) return null;
+      if(tt<=c.rollDur){
+        const p=easeInOut(tt/c.rollDur);
+        const x=lerp(c.x0,c.x1,p), y=INNER_BOTTOM+RADIUS, z=c.z0;
+        const spin=-tt*4.3;
+        return {x,y,z,rx:Math.PI/2,ry:spin,rz:0};
+      }
+      if(tt<=c.rollDur+c.fallDur){
+        const dt=tt-c.rollDur, p=clamp(dt/c.fallDur,0,1);
+        const x=c.x1 + p*.06, y=(INNER_BOTTOM+RADIUS) + (.08*unit)*p - .5*2.15*unit*dt*dt;
+        const z=lerp(c.z0,landZ,p);
+        const yy=Math.max(landY,y);
+        const spin=-c.rollDur*4.3-dt*2.6;
+        return {x,y:yy,z,rx:Math.PI/2+dt*.4,ry:spin,rz:dt*.12, landed:yy===landY, landTime:c.start+c.rollDur+c.fallDur};
+      }
+      if(tt<=c.rollDur+c.fallDur+c.hold){
+        const x=c.x1+.06, y=landY, z=landZ;
+        return {x,y,z,rx:Math.PI/2+.45,ry:-18.6,rz:.15};
+      }
+      return null;
+    }
+
+    if(c.kind==='burst'){
+      if(tt<0) return null;
+      const landY=FLOOR_Y+RADIUS;
+      const rise=.24;
+      if(tt<rise){
+        const p=easeOut(tt/rise);
+        const x=c.x, y=lerp(c.y0,c.y0+.06*unit,p), z=lerp(c.z0,c.z0+.045,p);
+        const spin=c.spinBase*tt;
+        return {x,y,z,rx:Math.PI/2+tt*.8,ry:spin,rz:spin*.42};
+      }
+      const dt=tt-rise;
+      const x=c.x + c.vx*dt, y=(c.y0+.06*unit) + c.vy*dt - .5*c.g*dt*dt, z=(c.z0+.045) + c.vz*dt;
+      const spin=c.spinBase*rise + dt*(4.4+Math.abs(c.spinBase));
+      if(y>landY){
+        return {x,y,z,rx:Math.PI/2+dt*1.15,ry:spin,rz:spin*.47};
+      }
+      const tLand=(c.vy + Math.sqrt(c.vy*c.vy + 2*c.g*((c.y0+.06*unit)-landY)))/c.g;
+      const totalActive=rise+tLand+c.hold;
+      if(tt<=totalActive){
+        const lx=c.x + c.vx*tLand, lz=(c.z0+.045)+c.vz*tLand;
+        return {x:lx,y:landY,z:lz,rx:Math.PI/2+1.2,ry:spin*1.05,rz:c.vx*3};
+      }
+      return null;
+    }
+
+    if(c.kind==='water'){
+      if(t<c.start) return null;
+      // PHASE A: fill the picture for the first 10 seconds of the waterfall (19..29).
+      if(t<29){
+        const local=t-c.start;
+        if(local<0) return null;
+        const p=clamp(local/c.fillDur,0,1);
+        const x=c.restX + Math.sin(local*2.1 + c.id)*c.sway*(1-p);
+        const y=lerp(c.topY,c.restY,easeOut(p));
+        const z=-.012;
+        const spin=local*(2.6+Math.abs(c.spinBase)*.5);
+        return {x,y,z,rx:Math.PI/2+c.tumble*p,ry:spin,rz:c.tumble*.35};
+      }
+      // Between start and 29 the coin has already accumulated inside the frame.
+      const releaseGlobal = 29 + c.spillDelay;
+      if(t<releaseGlobal){
+        return {x:c.restX,y:c.restY,z:-.012,rx:Math.PI/2+c.tumble*.9,ry:c.spinBase,rz:c.tumble*.35};
+      }
+      // PHASE B: repeated spill cycles. Coins overflow, fly out, then remain on the floor for 10 sec.
+      const cyclePos=(t-releaseGlobal)%c.cycle;
+      const spillDur=1.75;
+      const holdStart=spillDur;
+      const holdEnd=spillDur+c.hold;
+      if(cyclePos<spillDur){
+        const dt=cyclePos;
+        const x=c.restX + c.vx*dt + Math.sin(dt*4+c.id)*.01;
+        const y=c.restY + c.vy*dt - .5*c.g*dt*dt;
+        const z=-.005 + c.vz*dt;
+        const spin=c.spinBase + dt*(5.2+Math.abs(c.spinBase));
+        if(y>FLOOR_Y+RADIUS){
+          return {x,y,z,rx:Math.PI/2+dt*1.6,ry:spin,rz:spin*.32};
+        }
+        // Clamp to floor if the ballistic estimate reaches it early.
+        const a=.5*c.g, b=-c.vy, cc=FLOOR_Y+RADIUS-c.restY;
+        const disc=Math.max(0,b*b-4*a*cc);
+        const tLand=(-b+Math.sqrt(disc))/(2*a);
+        const lx=c.restX + c.vx*tLand, lz=-.005 + c.vz*tLand;
+        return {x:lx,y:FLOOR_Y+RADIUS,z:lz,rx:Math.PI/2+1.55,ry:spin,rz:c.vx*2.4};
+      }
+      if(cyclePos<holdEnd){
+        const a=.5*c.g, b=-c.vy, cc=FLOOR_Y+RADIUS-c.restY;
+        const disc=Math.max(0,b*b-4*a*cc);
+        const tLand=(-b+Math.sqrt(disc))/(2*a);
+        const lx=c.restX + c.vx*tLand, lz=-.005 + c.vz*tLand;
+        return {x:lx,y:FLOOR_Y+RADIUS,z:lz,rx:Math.PI/2+1.55,ry:c.spinBase*1.2,rz:c.vx*2.4};
+      }
+      return null;
+    }
+    return null;
+  }
+
+  function update(t){
+    const counts=[0,0,0,0,0]; let visible=0;
+    for(const c of coins){
+      const pose=updateCoin(c,t); const mesh=meshes[c.type]; const idx=counts[c.type]++;
+      if(pose){
+        placeCoin(pose.x,pose.y,pose.z,pose.rx,pose.ry,pose.rz,1); visible++;
+      } else hide();
+      mesh.setMatrixAt(idx,dummy.matrix);
+    }
+    // Hide unused instances in each InstancedMesh.
+    meshes.forEach((m,mi)=>{
+      for(let i=counts[mi]; i<countByType; i++){ hide(); m.setMatrixAt(i,dummy.matrix); }
+      m.instanceMatrix.needsUpdate=true;
+    });
+    return visible;
+  }
+
+  $('start').onclick=async()=>{
+    const btn=$('start'); btn.disabled=true; $('status').textContent='Запуск камеры...';
+    try{
+      await mindar.start();
+      $('replay').hidden=false; $('settings').hidden=false; btn.hidden=true; reset();
+      renderer.setAnimationLoop(()=>{
+        if(playing){ elapsed=(performance.now()-t0)/1000; if(elapsed>=90){ elapsed=90; playing=false; } }
+        update(elapsed);
+        if(playing) $('status').textContent=`Анимация: ${elapsed.toFixed(1)} / 90 сек`;
+        renderer.render(scene,camera);
+      });
+    }catch(e){ console.error(e); $('status').textContent='Ошибка камеры: '+(e?.message||String(e)); btn.disabled=false; }
+  };
+  $('replay').onclick=reset;
+  $('settings').onclick=()=>$('debug').style.display=$('debug').style.display==='block'?'none':'block';
+  $('scale').oninput=e=>{root.scale.setScalar(+e.target.value); $('sv').textContent=e.target.value;};
+  $('yoffset').oninput=e=>{root.position.y=+e.target.value; $('yv').textContent=e.target.value;};
 }
-$('start').addEventListener('click',async function firstStart(){
-  if(initialized||btnLock)return;btnLock=true;
-  // Unlock sound immediately in the user gesture (required on mobile browsers).
-  try{const A=window.AudioContext||window.webkitAudioContext;if(A&&!preUnlockedAudio){preUnlockedAudio=new A();preUnlockedAudio.resume();}}catch(e){console.warn('Audio unlock',e);}
-  const btn=$('start');btn.disabled=true;
+
+$('start').addEventListener('click', async function firstStart(){
+  if(initialized||btnLock) return; btnLock=true;
+  const btn=$('start'); btn.disabled=true;
   try{
     $('status').textContent='Проверяем файл распознавания...';
     const response=await fetch('./targets.mind',{cache:'no-store'});
-    if(!response.ok)throw new Error('targets.mind не найден (HTTP '+response.status+'). Проверь название и расположение файла на GitHub.');
-    const bytes=await response.arrayBuffer();
-    if(bytes.byteLength<100)throw new Error('targets.mind слишком маленький или пустой');
-    await initialize();
-    initialized=true;btnLock=false;
-    btn.disabled=false;
-    btn.onclick();
-  }catch(e){
-    console.error('AR start failed',e);
-    $('status').textContent='Ошибка: '+(e?.message||String(e));
-    btn.disabled=false;btnLock=false;
-  }
+    if(!response.ok) throw new Error('targets.mind не найден (HTTP '+response.status+'). Проверь название и расположение файла на GitHub.');
+    const bytes=await response.arrayBuffer(); if(bytes.byteLength<100) throw new Error('targets.mind слишком маленький или пустой');
+    await initialize(); initialized=true; btnLock=false; btn.disabled=false; btn.onclick();
+  }catch(e){ console.error('AR start failed',e); $('status').textContent='Ошибка: '+(e?.message||String(e)); btn.disabled=false; btnLock=false; }
 });
-window.addEventListener('unhandledrejection',e=>{console.error(e.reason);$('status').textContent='Ошибка загрузки: '+(e.reason?.message||String(e.reason));});
+window.addEventListener('unhandledrejection',e=>{ console.error(e.reason); $('status').textContent='Ошибка загрузки: '+(e.reason?.message||String(e.reason)); });
 </script></body></html>
