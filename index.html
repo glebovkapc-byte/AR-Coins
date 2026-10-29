@@ -1,7 +1,7 @@
-<!doctype html><html lang="ru"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><title>AR Монеты — 90 секунд (v3.4 — синхронный звук)</title>
+<!doctype html><html lang="ru"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><title>AR Монеты — 90 секунд (v3.5 — металлический звук и финал)</title>
 <style>*{box-sizing:border-box}body{margin:0;background:#121518;color:white;font-family:system-ui}#scene{position:fixed;inset:0;width:100vw;height:100dvh}#ui{position:fixed;top:12px;left:12px;right:12px;max-width:480px;margin:auto;z-index:10;background:#171b25de;padding:12px;border-radius:14px;font-size:13px}button{background:#f5c454;border:0;border-radius:8px;padding:9px 12px;font-weight:700;margin:4px 5px 0 0}input{width:95px}#debug{display:none;margin-top:8px}#status{margin:5px 0}small{color:#ddd}</style>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/renderers/CSS3DRenderer.js":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/renderers/CSS3DRenderer.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/","mindar-image-three":"https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"}}</script></head>
-<body><div id="scene"></div><div id="ui"><b>AR-картина · 90 секунд <span style="color:#f5c454">v3.4 · звук</span></b><div id="status">Нажми «Запустить AR»</div><button id="start">Запустить AR</button><button id="replay" hidden>Сначала</button><button id="settings" hidden>Настройки</button><button id="mute" hidden>🔊 Звук вкл.</button><div id="debug"><label>Размер сцены <input id="scale" type="range" min="0.6" max="1.6" step=".05" value="1"></label><span id="sv">1</span><br><label>Высота <input id="yoffset" type="range" min="-.2" max=".2" step=".01" value="0"></label><span id="yv">0</span><br><label>Громкость <input id="volume" type="range" min="0" max="0.6" step="0.05" value="0.3"></label><span id="vv">30%</span></div><small>Дизайны: 5 · пол: 125 см ниже нижнего края рамы · рамка: 93 × 69 см</small></div>
+<body><div id="scene"></div><div id="ui"><b>AR-картина · 90 секунд <span style="color:#f5c454">v3.5 · финал</span></b><div id="status">Нажми «Запустить AR»</div><button id="start">Запустить AR</button><button id="replay" hidden>Сначала</button><button id="settings" hidden>Настройки</button><button id="mute" hidden>🔊 Звук вкл.</button><div id="debug"><label>Размер сцены <input id="scale" type="range" min="0.6" max="1.6" step=".05" value="1"></label><span id="sv">1</span><br><label>Высота <input id="yoffset" type="range" min="-.2" max=".2" step=".01" value="0"></label><span id="yv">0</span><br><label>Громкость <input id="volume" type="range" min="0" max="0.6" step="0.05" value="0.3"></label><span id="vv">30%</span></div><small>Дизайны: 5 · после 60 с — плотный водопад · пол: 125 см ниже нижнего края рамы · рамка: 93 × 69 см</small></div>
 <script type="module">
 const $=id=>document.getElementById(id);
 let initialized=false,btnLock=false,preUnlockedAudio=null;
@@ -20,7 +20,7 @@ const INNER_HALF_X=.405*unit, INNER_TOP=.265*unit, INNER_BOTTOM=-.265*unit;
 const EDGE_Y=-HEIGHT/2*unit, FLOOR_Y=-(HEIGHT/2+FLOOR_BELOW)*unit;
 const DIAMETER=.075*unit,RADIUS=DIAMETER/2;
 const root=new THREE.Group();anchor.group.add(root);root.rotation.set(0,0,0);
-const mats=[],meshes=[],countByType=85,total=countByType*5,dummy=new THREE.Object3D();
+const mats=[],meshes=[],countByType=220,total=countByType*5,dummy=new THREE.Object3D();
 const edge=new THREE.MeshStandardMaterial({color:0xb7832e,metalness:.76,roughness:.28});
 const textureLoader=new THREE.TextureLoader();
 for(let i=0;i<5;i++){
@@ -29,6 +29,13 @@ for(let i=0;i<5;i++){
  const geo=new THREE.CylinderGeometry(RADIUS,RADIUS,RADIUS*.13,40,1,false);
  const mesh=new THREE.InstancedMesh(geo,[edge,face,face],countByType);mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.frustumCulled=false;root.add(mesh);meshes.push(mesh);
 }
+// Opaque coin collage gradually covers the tracked wall INSIDE the frame after 60 s.
+// It sits behind the animated coins, so the falling coins retain real depth.
+const wallTex=textureLoader.load('./coin_wall.jpg');
+wallTex.colorSpace=THREE.SRGBColorSpace;
+const wallMat=new THREE.MeshBasicMaterial({map:wallTex, transparent:true, opacity:0, depthWrite:false, side:THREE.DoubleSide});
+const wall=new THREE.Mesh(new THREE.PlaneGeometry(INNER_HALF_X*2,INNER_TOP-INNER_BOTTOM),wallMat);
+wall.position.set(0,(INNER_TOP+INNER_BOTTOM)/2,-.028);root.add(wall);
 // Stable deterministic positions: every replay is identical.
 function noise(n){let x=Math.sin(n*127.1+78.233)*43758.5453;return x-Math.floor(x)}
 const coins=Array.from({length:total},(_,i)=>({i,type:i%5,t:0,sx:0,sy:0,sz:0,mode:'fall',speed:1,phase:noise(i+1)*6.28}));
@@ -36,7 +43,7 @@ function setup(){for(let i=0;i<total;i++){
  const c=coins[i];c.type=i%5;
  if(i===0){c.t=0;c.mode='roll';continue;}
  if(i<=10){c.t=6+(i-1)*1.35;c.mode='single';}
- else{const j=i-11;c.t=20+j*.13+noise(i)*3;c.mode='water';}
+ else{const j=i-11;c.t=(i<425?20+j*.13+noise(i)*3:60+noise(i*7)*14);c.mode='water';}
  c.sx=(noise(i*3+1)*2-1)*(INNER_HALF_X-RADIUS*1.1);
  c.sy=INNER_TOP+RADIUS*(1+noise(i+4)*4);
  c.sz=-.012;
@@ -65,19 +72,36 @@ function initAudio(){
 }
 function targetLevel(){return !shown||muted?0:volume;}
 function applyVolume(){if(!ctx)return;const now=ctx.currentTime;master.gain.cancelScheduledValues(now);master.gain.setTargetAtTime(targetLevel(),now,.085);}
-// Metallic high-pitched ring plus a short clink attack, without loud transients.
+// Inharmonic bell modes + brief filtered metallic attack. Small peak level is
+// deliberate for headphones. Every event uses the same animation clock.
 function coinClink(strength=1,pitch=1){
  if(!ctx||!shown||muted)return;
- const now=ctx.currentTime,base=(900+Math.random()*260)*pitch;
- const g=ctx.createGain();g.gain.setValueAtTime(.0001,now);
- g.gain.exponentialRampToValueAtTime(Math.min(.055,.014*strength),now+.006);
- g.gain.exponentialRampToValueAtTime(.0001,now+.25);
- for(const [ratio,amp] of [[1,1],[2.37,.37],[3.72,.13]]){
-   const osc=ctx.createOscillator(),mix=ctx.createGain();
-   osc.type='sine';osc.frequency.setValueAtTime(base*ratio,now);mix.gain.value=amp;
-   osc.connect(mix);mix.connect(g);osc.start(now);osc.stop(now+.27);
+ const now=ctx.currentTime;
+ const fundamental=(680+Math.random()*180)*pitch;
+ const env=ctx.createGain();
+ const level=Math.min(.038,.011*Math.max(.15,strength));
+ env.gain.setValueAtTime(.00001,now);
+ env.gain.exponentialRampToValueAtTime(level,now+.003);
+ env.gain.exponentialRampToValueAtTime(level*.28,now+.052);
+ env.gain.exponentialRampToValueAtTime(.00001,now+.58);
+ const pan=ctx.createStereoPanner?ctx.createStereoPanner():null;
+ if(pan){pan.pan.value=(Math.random()-.5)*.7;env.connect(pan);pan.connect(master);}else env.connect(master);
+ for(const [ratio,amp,decay] of [[1,1,.46],[1.48,.56,.34],[2.19,.32,.27],[2.97,.20,.20],[4.12,.08,.13]]){
+   const osc=ctx.createOscillator(),g=ctx.createGain();
+   osc.type='sine';osc.frequency.value=fundamental*ratio;
+   g.gain.setValueAtTime(amp,now);
+   g.gain.exponentialRampToValueAtTime(.0001,now+decay);
+   osc.connect(g);g.connect(env);osc.start(now);osc.stop(now+decay+.015);
  }
- g.connect(master);
+ // Bright short tap: metal-on-metal contact, not just a pure bell.
+ const nlen=Math.floor(ctx.sampleRate*.035);
+ const buffer=ctx.createBuffer(1,nlen,ctx.sampleRate),d=buffer.getChannelData(0);
+ for(let i=0;i<nlen;i++)d[i]=(Math.random()*2-1)*Math.exp(-i/nlen*9);
+ const noiseNode=ctx.createBufferSource();noiseNode.buffer=buffer;
+ const hp=ctx.createBiquadFilter();hp.type='highpass';hp.frequency.value=3200;
+ const noiseGain=ctx.createGain();noiseGain.gain.value=level*.48;
+ noiseNode.connect(hp);hp.connect(noiseGain);noiseGain.connect(master);
+ noiseNode.start(now);noiseNode.stop(now+.036);
 }
 let lastRollTick=-1, lastWaterTick=-1, lastSingles=new Set(), playedFirstImpact=false;
 function resetSound(){lastAudioT=0;lastRollTick=-1;lastWaterTick=-1;lastSingles.clear();playedFirstImpact=false;if(ambience&&ctx)ambience.gain.setTargetAtTime(0,ctx.currentTime,.035);}
@@ -95,14 +119,15 @@ function soundStep(t){
  // Waterfall grows from sparse clinks to a more closely spaced cascade.
  if(t>=20){
   const growth=Math.min(1,(t-20)/15);
-  const interval=.40-growth*.30;
+  const climax=Math.min(1,Math.max(0,(t-60)/25));
+  const interval=Math.max(.075,.40-growth*.30-climax*.025);
   const tick=Math.floor((t-20)/interval);
   if(tick!==lastWaterTick){
     lastWaterTick=tick;
     coinClink(.35+.42*growth,.8+noise(tick+223)*.55);
     if(growth>.55 && noise(tick+41)>.48)coinClink(.23,.9+noise(tick)*.5);
   }
-  if(ambience){ambience.gain.setTargetAtTime((.006+.15*growth),ctx.currentTime,.12);}
+  if(ambience){ambience.gain.setTargetAtTime((.004+.035*growth+.055*climax),ctx.currentTime,.12);}
  }else if(ambience){ambience.gain.setTargetAtTime(0,ctx.currentTime,.07);}
  lastAudioT=t;
 }
@@ -115,7 +140,7 @@ anchor.onTargetFound=()=>{shown=true;applyVolume();if(!playing&&elapsed<90){play
 anchor.onTargetLost=()=>{shown=false;applyVolume();if(playing){elapsed=(performance.now()-t0)/1000;playing=false;}$('status').textContent='Наведите камеру на раму';};
 const rot=new THREE.Euler(),quat=new THREE.Quaternion(),temp=new THREE.Vector3();
 function hide(){dummy.position.set(0,0,-1000);dummy.scale.setScalar(.00001);dummy.updateMatrix();}
-function update(t){const counts=[0,0,0,0,0];let display=0;
+function update(t){wallMat.opacity=Math.min(1,Math.max(0,(t-60)/25));wall.visible=t>=60;const counts=[0,0,0,0,0];let display=0;
  for(const c of coins){let x=0,y=0,z=0,spin=0,tilt=0,visible=false,local=t-c.t;const duration=2.3;
  if(local>=0){
  if(c.mode==='roll'){
@@ -141,7 +166,7 @@ function update(t){const counts=[0,0,0,0,0];let display=0;
   const inside=x> -INNER_HALF_X+RADIUS*.7 && x<INNER_HALF_X-RADIUS*.7 && y<INNER_TOP-RADIUS*.6 && y>INNER_BOTTOM+RADIUS*.6;
   visible=inside && p<cycle;
   // After 35s some falling coins spill forward and down toward the floor.
-  if(t>35 && c.i%9===0 && p>1.05){z=.10+(p-1.05)*.07;y=INNER_BOTTOM+.03-(p-1.05)*.95*unit;visible=y>FLOOR_Y-RADIUS&&p<3.3;}
+  if(t>35 && c.i<425 && c.i%9===0 && p>1.05){z=.10+(p-1.05)*.07;y=INNER_BOTTOM+.03-(p-1.05)*.95*unit;visible=y>FLOOR_Y-RADIUS&&p<3.3;}
  }
  }
  const mesh=meshes[c.type],index=counts[c.type]++;
