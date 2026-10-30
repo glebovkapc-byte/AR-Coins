@@ -1,6 +1,6 @@
 <!doctype html><html lang="ru"><head><meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>AR Монеты — 90 секунд (v4.8)</title>
+<title>AR Монеты — 90 секунд (v4.9)</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#11141a;color:#fff;font-family:system-ui}
 #scene{position:fixed;inset:0;width:100vw;height:100dvh}
@@ -12,7 +12,7 @@ button{background:#f5c454;border:0;border-radius:8px;padding:8px 11px;font-weigh
 </head><body>
 <div id="scene"></div>
 <div id="ui">
-  <b>AR-картина · 90 секунд <span style="color:#f5c454">v4.8 · водопад по всей ширине</span></b>
+  <b>AR-картина · 90 секунд <span style="color:#f5c454">v4.9 · водопад по всей ширине</span></b>
   <div id="status">Нажми «Запустить AR»</div>
   <button id="start">Запустить AR</button>
   <button id="replay" hidden>Сначала</button>
@@ -28,6 +28,7 @@ button{background:#f5c454;border:0;border-radius:8px;padding:8px 11px;font-weigh
 <script type="module">
 const $=id=>document.getElementById(id);
 let initialized=false, btnLock=false;
+let playing=false, shown=false, elapsed=0, t0=0;
 // User-supplied audio file: no synthesized bell sounds.
 const soundtrack=new Audio('./soundtrack.mp3');
 soundtrack.preload='auto'; soundtrack.loop=true; soundtrack.playsInline=true;
@@ -140,8 +141,7 @@ async function initialize(){
     if(soundEnabled)syncSound(elapsed,true);else soundtrack.pause();
   };
 
-  let playing=false, shown=false, elapsed=0, t0=0;
-  function reset(){ soundtrack.pause();soundtrack.currentTime=0; elapsed=0; t0=performance.now(); playing=shown; $('status').textContent='Анимация: 0 / 90 сек'; }
+  function reset(){ soundtrack.pause();soundtrack.currentTime=0; elapsed=0; t0=performance.now(); playing=shown; $('status').textContent='Анимация: 0 / 90 сек'; if(playing) syncSound(0,true); }
   anchor.onTargetFound=()=>{ shown=true; if(!playing&&elapsed<90){ playing=true; t0=performance.now()-elapsed*1000; } $('status').textContent='Картина распознана';syncSound(elapsed,true); };
   anchor.onTargetLost=()=>{ shown=false;soundtrack.pause(); if(playing){ elapsed=(performance.now()-t0)/1000; playing=false; } $('status').textContent='Наведите камеру на раму'; };
 
@@ -247,6 +247,8 @@ async function initialize(){
 
 $('start').addEventListener('click', async function firstStart(){
   if(initialized||btnLock) return; btnLock=true; const btn=$('start'); btn.disabled=true;
+  // Unlock HTMLAudio playback while still inside the direct user gesture.
+  soundtrack.muted=true; soundtrack.play().then(()=>{soundtrack.pause();soundtrack.currentTime=0;soundtrack.muted=false;}).catch(()=>{soundtrack.muted=false;});
   try{
     $('status').textContent='Проверяем файл распознавания...';
     const response=await fetch('./targets.mind',{cache:'no-store'});
