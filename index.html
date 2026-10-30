@@ -1,6 +1,6 @@
 <!doctype html><html lang="ru"><head><meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>AR Монеты — 90 секунд (v4.7)</title>
+<title>AR Монеты — 90 секунд (v4.8)</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#11141a;color:#fff;font-family:system-ui}
 #scene{position:fixed;inset:0;width:100vw;height:100dvh}
@@ -12,7 +12,7 @@ button{background:#f5c454;border:0;border-radius:8px;padding:8px 11px;font-weigh
 </head><body>
 <div id="scene"></div>
 <div id="ui">
-  <b>AR-картина · 90 секунд <span style="color:#f5c454">v4.7 · водопад по краям рамы</span></b>
+  <b>AR-картина · 90 секунд <span style="color:#f5c454">v4.8 · водопад по всей ширине</span></b>
   <div id="status">Нажми «Запустить AR»</div>
   <button id="start">Запустить AR</button>
   <button id="replay" hidden>Сначала</button>
@@ -23,18 +23,23 @@ button{background:#f5c454;border:0;border-radius:8px;padding:8px 11px;font-weigh
     <label>Размер сцены <input id="scale" type="range" min="0.6" max="1.6" step=".05" value="1"></label> <span id="sv">1</span><br>
     <label>Высота <input id="yoffset" type="range" min="-.2" max=".2" step=".01" value="0"></label> <span id="yv">0</span>
   </div>
-  <small id="help">Монеты появляются из-за верхнего края. Водопад идёт в основном по левому и правому краям проёма рамы. Часть высыпается на пол и исчезает через 10 секунд. Звук монет нарастает вместе с водопадом. Кнопка «Звук» отключает воспроизведение.</small>
+  <small id="help">Монеты появляются немного выше за верхней кромкой рамы и идут непрерывным водопадом по всей ширине проёма. Звучит загруженная аудиодорожка. После её окончания звук повторяется.</small>
 </div>
 <script type="module">
 const $=id=>document.getElementById(id);
 let initialized=false, btnLock=false;
-// Unlock on the first user tap (mobile browser audio policy).
-let audioContext=null;
-function unlockAudio(){
-  try{
-    if(!audioContext){const A=window.AudioContext||window.webkitAudioContext;if(A)audioContext=new A();}
-    if(audioContext&&audioContext.state==='suspended')audioContext.resume().catch(()=>{});
-  }catch(e){console.warn('Audio unavailable',e);}
+// User-supplied audio file: no synthesized bell sounds.
+const soundtrack=new Audio('./soundtrack.mp3');
+soundtrack.preload='auto'; soundtrack.loop=true; soundtrack.playsInline=true;
+soundtrack.volume=.50;let soundEnabled=true;
+function syncSound(t,force=false){
+  if(!soundEnabled||!shown||!playing||t>=90){soundtrack.pause();return;}
+  if(soundtrack.readyState>=1 && soundtrack.duration>0){
+    const target=t%soundtrack.duration;
+    const delta=Math.abs(soundtrack.currentTime-target);
+    if(force||delta>.65) soundtrack.currentTime=target;
+  }
+  if(soundtrack.paused) soundtrack.play().catch(e=>console.warn('Audio playback:',e));
 }
 
 async function initialize(){
@@ -110,8 +115,8 @@ async function initialize(){
     add({kind:'stream',
       activeAt:19 + Math.pow(k,1.12)*57 + noise(i+101)*.35,
       phase:noise(i+111),
-      edgeBand: lerp(safeX*0.45, safeX*0.96, noise(i*2+1)),
-      side: noise(i*5+77)<0.5 ? -1 : 1,
+      edgeBand: (noise(i*2+1)*2-1)*safeX*.88,
+      side: 1,
       xBase: 0,
       sway:(noise(i+121)-.5)*.018,
       topY:safeTop,
@@ -129,92 +134,16 @@ async function initialize(){
     });
   }
 
-  // AUDIO: WebAudio metallic contacts. Triggered from the same animation clock.
-  // No external audio file and no detached soundtrack that can drift.
-  let soundEnabled=true, soundGain=null, limiter=null, rustleNode=null, rustleGain=null;
-  let previousSoundT=0, lastRollingTick=-1, lastWaterTick=-1;
-  const playedHits=new Set();
-  function ensureSound(){
-    if(!audioContext||soundGain)return;
-    const ctx=audioContext;
-    soundGain=ctx.createGain();soundGain.gain.value=0;
-    limiter=ctx.createDynamicsCompressor();
-    limiter.threshold.value=-19;limiter.knee.value=10;limiter.ratio.value=12;
-    limiter.attack.value=.004;limiter.release.value=.20;
-    soundGain.connect(limiter);limiter.connect(ctx.destination);
-    const b=ctx.createBuffer(1,ctx.sampleRate*2,ctx.sampleRate);
-    const data=b.getChannelData(0); let last=0;
-    for(let i=0;i<data.length;i++){last=last*.88+(Math.random()*2-1)*.12;data[i]=last;}
-    rustleNode=ctx.createBufferSource();rustleNode.buffer=b;rustleNode.loop=true;
-    const bp=ctx.createBiquadFilter();bp.type='bandpass';bp.frequency.value=3000;bp.Q.value=.8;
-    rustleGain=ctx.createGain();rustleGain.gain.value=0;
-    rustleNode.connect(bp);bp.connect(rustleGain);rustleGain.connect(soundGain);
-    rustleNode.start();
-  }
-  function setAudioActive(){
-    if(!soundGain||!audioContext)return;
-    const target=soundEnabled&&shown&&playing?0.42:0;
-    soundGain.gain.setTargetAtTime(target,audioContext.currentTime,.08);
-  }
-  function clink(strength=1,seed=0){
-    if(!soundEnabled||!shown||!playing||!audioContext)return;
-    const ctx=audioContext, now=ctx.currentTime;
-    const fundamental=560+noise(seed+9)*360;
-    const env=ctx.createGain(), vol=Math.min(.09,.030*strength);
-    env.gain.setValueAtTime(.00001,now);
-    env.gain.exponentialRampToValueAtTime(Math.max(.0001,vol),now+.003);
-    env.gain.exponentialRampToValueAtTime(.00001,now+.43);
-    env.connect(soundGain);
-    for(const [mult,amp,decay] of [[1,1,.42],[1.47,.62,.29],[2.23,.37,.21],[3.13,.17,.14]]){
-      const oscillator=ctx.createOscillator(),g=ctx.createGain();
-      oscillator.type='sine';oscillator.frequency.value=fundamental*mult;
-      g.gain.setValueAtTime(amp,now);
-      g.gain.exponentialRampToValueAtTime(.0001,now+decay);
-      oscillator.connect(g);g.connect(env);
-      oscillator.start(now);oscillator.stop(now+decay+.02);
-    }
-  }
-  function resetSound(){
-    previousSoundT=0;lastRollingTick=-1;lastWaterTick=-1;playedHits.clear();
-    if(rustleGain&&audioContext)rustleGain.gain.setTargetAtTime(0,audioContext.currentTime,.05);
-  }
-  const landingFor=(c)=>{
-    const rise=.24, y0=c.y0+.06*unit;
-    return c.start+rise+solveLanding(y0,c.vy,c.g,FLOOR_Y+RADIUS);
+  $('sound').onclick=()=>{
+    soundEnabled=!soundEnabled;
+    $('sound').textContent=soundEnabled?'🔊 Звук вкл.':'🔇 Звук выкл.';
+    if(soundEnabled)syncSound(elapsed,true);else soundtrack.pause();
   };
-  // All temporal events are derived from the same scene elapsed time.
-  function soundStep(t){
-    if(!audioContext||!soundGain)return;
-    setAudioActive();
-    if(!shown||!playing||!soundEnabled)return;
-    const last=previousSoundT;
-    if(t<3.2){let step=Math.floor(t/.22);if(step!==lastRollingTick){lastRollingTick=step;if(t>.1)clink(.18,step);}}
-    if(last<4.55&&t>=4.55)clink(1.2,5);
-    for(const c of coins){
-      if(c.kind!=='burst')continue;
-      const land=landingFor(c);
-      if(last<land&&t>=land)clink(.9,c.id);
-    }
-    if(t>=19){
-      const gain=clamp((t-19)/71,0,1);
-      // Sonic density increases as more coins become active.
-      const interval=lerp(.57,.085,Math.pow(gain,.9));
-      const tick=Math.floor((t-19)/interval);
-      if(tick!==lastWaterTick){
-        lastWaterTick=tick;
-        clink(.36+.52*gain,tick+1000);
-        if(gain>.42&&noise(tick+88)<gain*.45)clink(.25+gain*.18,tick+2000);
-      }
-      if(rustleGain)rustleGain.gain.setTargetAtTime(.001+gain*.039,audioContext.currentTime,.20);
-    }else if(rustleGain)rustleGain.gain.setTargetAtTime(0,audioContext.currentTime,.08);
-    previousSoundT=t;
-  }
-  $('sound').onclick=()=>{soundEnabled=!soundEnabled;$('sound').textContent=soundEnabled?'🔊 Звук вкл.':'🔇 Звук выкл.';setAudioActive();};
 
   let playing=false, shown=false, elapsed=0, t0=0;
-  function reset(){ resetSound(); elapsed=0; t0=performance.now(); playing=shown; $('status').textContent='Анимация: 0 / 90 сек'; }
-  anchor.onTargetFound=()=>{ shown=true;setAudioActive(); if(!playing&&elapsed<90){ playing=true; t0=performance.now()-elapsed*1000; } $('status').textContent='Картина распознана'; };
-  anchor.onTargetLost=()=>{ shown=false;setAudioActive(); if(playing){ elapsed=(performance.now()-t0)/1000; playing=false; } $('status').textContent='Наведите камеру на раму'; };
+  function reset(){ soundtrack.pause();soundtrack.currentTime=0; elapsed=0; t0=performance.now(); playing=shown; $('status').textContent='Анимация: 0 / 90 сек'; }
+  anchor.onTargetFound=()=>{ shown=true; if(!playing&&elapsed<90){ playing=true; t0=performance.now()-elapsed*1000; } $('status').textContent='Картина распознана';syncSound(elapsed,true); };
+  anchor.onTargetLost=()=>{ shown=false;soundtrack.pause(); if(playing){ elapsed=(performance.now()-t0)/1000; playing=false; } $('status').textContent='Наведите камеру на раму'; };
 
   function place(p){ dummy.position.set(p.x,p.y,p.z); dummy.rotation.set(p.rx,p.ry,p.rz); dummy.scale.setScalar(p.s||1); dummy.updateMatrix(); }
 
@@ -244,15 +173,15 @@ async function initialize(){
   function poseStream(c,t){
     const density=clamp((t-19)/71,0,1);
     const insideDur=c.insideDur*(1-.13*density);
-    const entry=.34; // seconds spent emerging from behind the upper frame
+    const entry=.44; // seconds spent emerging from behind the upper frame
     const fallDur=insideDur+entry;
     // Stagger initial entry in time rather than assigning an already-visible phase.
     const local=t-c.activeAt-c.phase*.7;
     if(local<0) return null;
     const innerPose=(dt)=>{
       const p=clamp(dt/fallDur,0,1);
-      const x=c.side*c.edgeBand + Math.sin(dt*3+c.phase*6)*c.sway;
-      const startY=safeTop+RADIUS*2.4;
+      const x=c.edgeBand + Math.sin(dt*3+c.phase*6)*c.sway;
+      const startY=safeTop+RADIUS*3.8;
       const y=lerp(startY,safeBottom,p);
       const reveal=clamp((safeTop+RADIUS*.35-y)/(RADIUS*1.65),0,1);
       const spin=c.spinBase+dt*(4+Math.abs(c.spinBase));
@@ -271,7 +200,7 @@ async function initialize(){
     const phase=local%cycle;
     if(phase<fallDur) return innerPose(phase);
     const dt=Math.min(tLand,phase-fallDur);
-    const x=c.side*c.edgeBand + c.vx*dt;
+    const x=c.edgeBand + c.vx*dt;
     const z=.02+c.vz*dt;
     const y=Math.max(landY,safeBottom+c.vy*dt-.5*c.g*dt*dt);
     return {x,y,z,rx:Math.PI/2+dt*1.4,ry:c.spinBase+dt*7,rz:c.vx*2.5};
@@ -305,8 +234,8 @@ async function initialize(){
   $('start').onclick=async()=>{
     const btn=$('start'); btn.disabled=true; $('status').textContent='Запуск камеры...';
     try{
-      await mindar.start(); ensureSound(); $('replay').hidden=false; $('settings').hidden=false; $('info').hidden=false; $('sound').hidden=false; btn.hidden=true; reset();
-      renderer.setAnimationLoop(()=>{ if(playing){ elapsed=(performance.now()-t0)/1000; if(elapsed>=90){ elapsed=90; playing=false; } } update(elapsed);soundStep(elapsed); if(playing) $('status').textContent=`Анимация: ${elapsed.toFixed(1)} / 90 сек`; renderer.render(scene,camera); });
+      await mindar.start(); $('replay').hidden=false; $('settings').hidden=false; $('info').hidden=false; $('sound').hidden=false; btn.hidden=true; reset(); syncSound(elapsed,true);
+      renderer.setAnimationLoop(()=>{ if(playing){ elapsed=(performance.now()-t0)/1000; if(elapsed>=90){ elapsed=90; playing=false; } } update(elapsed);syncSound(elapsed); if(playing) $('status').textContent=`Анимация: ${elapsed.toFixed(1)} / 90 сек`; renderer.render(scene,camera); });
     }catch(e){ console.error(e); $('status').textContent='Ошибка камеры: '+(e?.message||String(e)); btn.disabled=false; }
   };
   $('replay').onclick=reset;
@@ -317,7 +246,7 @@ async function initialize(){
 }
 
 $('start').addEventListener('click', async function firstStart(){
-  if(initialized||btnLock) return; unlockAudio(); btnLock=true; const btn=$('start'); btn.disabled=true;
+  if(initialized||btnLock) return; btnLock=true; const btn=$('start'); btn.disabled=true;
   try{
     $('status').textContent='Проверяем файл распознавания...';
     const response=await fetch('./targets.mind',{cache:'no-store'});
