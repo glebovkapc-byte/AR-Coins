@@ -1,6 +1,6 @@
 <!doctype html><html lang="ru"><head><meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>AR Монеты — 90 секунд (v4.9)</title>
+<title>AR Монеты — 90 секунд (v5.0)</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#11141a;color:#fff;font-family:system-ui}
 #scene{position:fixed;inset:0;width:100vw;height:100dvh}
@@ -12,7 +12,7 @@ button{background:#f5c454;border:0;border-radius:8px;padding:8px 11px;font-weigh
 </head><body>
 <div id="scene"></div>
 <div id="ui">
-  <b>AR-картина · 90 секунд <span style="color:#f5c454">v4.9 · водопад по всей ширине</span></b>
+  <b>AR-картина · 90 секунд <span style="color:#f5c454">v5.0 · водопад по всей ширине</span></b>
   <div id="status">Нажми «Запустить AR»</div>
   <button id="start">Запустить AR</button>
   <button id="replay" hidden>Сначала</button>
@@ -20,7 +20,7 @@ button{background:#f5c454;border:0;border-radius:8px;padding:8px 11px;font-weigh
   <button id="info" hidden>Описание</button>
   <button id="sound" hidden>🔊 Звук вкл.</button>
   <div id="debug">
-    <label>Размер сцены <input id="scale" type="range" min="0.6" max="1.6" step=".05" value="1"></label> <span id="sv">1</span><br>
+    <label>Размер сцены <input id="scale" type="range" min="0.6" max="1.6" step=".05" value="1.1"></label> <span id="sv">1.1</span><br>
     <label>Высота <input id="yoffset" type="range" min="-.2" max=".2" step=".01" value="0"></label> <span id="yv">0</span>
   </div>
   <small id="help">Монеты появляются немного выше за верхней кромкой рамы и идут непрерывным водопадом по всей ширине проёма. Звучит загруженная аудиодорожка. После её окончания звук повторяется.</small>
@@ -64,7 +64,7 @@ async function initialize(){
   const safeX=INNER_HALF_X-SAFE_MARGIN;
   const safeTop=INNER_TOP-SAFE_MARGIN;
   const safeBottom=INNER_BOTTOM+RADIUS*.42;
-  const root=new THREE.Group(); anchor.group.add(root);
+  const root=new THREE.Group(); root.scale.setScalar(1.1); anchor.group.add(root);
 
   const edge=new THREE.MeshStandardMaterial({color:0xb7832e,metalness:.82,roughness:.26});
   const textureLoader=new THREE.TextureLoader();
