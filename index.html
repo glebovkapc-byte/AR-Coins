@@ -1,6 +1,6 @@
 <!doctype html><html lang="ru"><head><meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>AR Монеты — 90 секунд (v5.1)</title>
+<title>AR Монеты — 90 секунд (v5.2)</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#11141a;color:#fff;font-family:system-ui}
 #scene{position:fixed;inset:0;width:100vw;height:100dvh}
@@ -12,7 +12,7 @@ button{background:#f5c454;border:0;border-radius:8px;padding:8px 11px;font-weigh
 </head><body>
 <div id="scene"></div>
 <div id="ui">
-  <b>AR-картина · 90 секунд <span style="color:#f5c454">v5.1 · водопад по всей ширине</span></b>
+  <b>AR-картина · 90 секунд <span style="color:#f5c454">v5.2 · монеты летят в камеру</span></b>
   <div id="status">Нажми «Запустить AR»</div>
   <button id="start">Запустить AR</button>
   <button id="replay" hidden>Сначала</button>
@@ -23,7 +23,7 @@ button{background:#f5c454;border:0;border-radius:8px;padding:8px 11px;font-weigh
     <label>Размер сцены <input id="scale" type="range" min="0.6" max="1.6" step=".05" value="1.1"></label> <span id="sv">1.1</span><br>
     <label>Высота <input id="yoffset" type="range" min="-.2" max=".2" step=".01" value="0"></label> <span id="yv">0</span>
   </div>
-  <small id="help">Монеты появляются немного выше за верхней кромкой рамы и идут непрерывным водопадом по всей ширине проёма. Звучит загруженная аудиодорожка. После её окончания звук повторяется.</small>
+  <small id="help">Монеты появляются над проёмом рамы и образуют водопад. При вылете большинство летит прямо к камере, а остальные падают на виртуальный пол. Загруженная аудиодорожка сохранена.</small>
 </div>
 <script type="module">
 const $=id=>document.getElementById(id);
@@ -125,6 +125,7 @@ async function initialize(){
       // Only a fraction of the instances spill onto the floor;
       // the rest recycle continuously through the frame.
       spill:i%10!==0,
+      flyToViewer:i%5!==0,
       vx:(noise(i+161)*2-1)*.21,
       vy:(.12+noise(i+171)*.19)*unit,
       vz:.07+noise(i+181)*.13,
@@ -172,6 +173,12 @@ async function initialize(){
   // Coins start above the visible opening; none are born in mid-air.
   // The top strip acts as the hidden entrance. Fade-in is done by scale,
   // so a recycled coin never instantly appears fully formed in the image.
+  // Live camera aim point in the root's own coordinate system.
+  const cameraLocal=new THREE.Vector3();
+  const cameraWorld=new THREE.Vector3();
+  const flightStart=new THREE.Vector3();
+  const flightDelta=new THREE.Vector3();
+  const flightTarget=new THREE.Vector3();
   function poseStream(c,t){
     const density=clamp((t-19)/71,0,1);
     const insideDur=c.insideDur*(1-.13*density);
@@ -196,6 +203,31 @@ async function initialize(){
       const dt=local%fallDur;
       return innerPose(dt);
     }
+    // Most exiting coins fly towards the phone lens (and stop in front of it).
+    // Other coins retain the original 10-second stay on the floor.
+    if(c.flyToViewer){
+      const flightDur=1.05+noise(c.id+823)*.45;
+      const cycle=fallDur+flightDur+.12;
+      const phase=local%cycle;
+      if(phase<fallDur) return innerPose(phase);
+      const dt=phase-fallDur;
+      if(dt>=flightDur) return null;
+      const p=clamp(dt/flightDur,0,1);
+      const eased=p*p*(3-2*p);
+      // Start just below the picture opening and move toward the CURRENT camera.
+      flightStart.set(c.edgeBand,safeBottom,.025);
+      flightDelta.copy(cameraLocal).sub(flightStart);
+      const distance=flightDelta.length();
+      if(distance<.08) return null;
+      // Remain ~30 cm short of the camera instead of crossing its near plane.
+      flightTarget.copy(cameraLocal).addScaledVector(flightDelta,-.30/distance);
+      const x=lerp(flightStart.x,flightTarget.x,eased) + c.vx*.12*Math.sin(Math.PI*p);
+      const y=lerp(flightStart.y,flightTarget.y,eased) - .065*Math.sin(Math.PI*p);
+      const z=lerp(flightStart.z,flightTarget.z,eased);
+      const spin=c.spinBase+dt*(9+Math.abs(c.spinBase));
+      const fade=clamp((1-p)/.12,0,1);
+      return {x,y,z,rx:Math.PI/2+dt*4,ry:spin,rz:dt*6+c.tumble,s:fade};
+    }
     const landY=FLOOR_Y+RADIUS;
     const tLand=solveLanding(safeBottom,c.vy,c.g,landY);
     const cycle=fallDur+tLand+c.hold;
@@ -216,6 +248,11 @@ async function initialize(){
   }
 
   function update(t){
+    camera.updateWorldMatrix(true,false);
+    root.updateWorldMatrix(true,false);
+    camera.getWorldPosition(cameraWorld);
+    cameraLocal.copy(cameraWorld);
+    root.worldToLocal(cameraLocal);
     const counts=[0,0,0,0,0];
     for(const c of coins){
       let pose=poseFor(c,t); const mesh=meshes[c.type], idx=counts[c.type]++;
