@@ -1,6 +1,6 @@
 <!doctype html><html lang="ru"><head><meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>AR Монеты — 90 секунд (v5.2)</title>
+<title>AR Монеты — 90 секунд (v5.3)</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#11141a;color:#fff;font-family:system-ui}
 #scene{position:fixed;inset:0;width:100vw;height:100dvh}
@@ -12,7 +12,7 @@ button{background:#f5c454;border:0;border-radius:8px;padding:8px 11px;font-weigh
 </head><body>
 <div id="scene"></div>
 <div id="ui">
-  <b>AR-картина · 90 секунд <span style="color:#f5c454">v5.2 · монеты летят в камеру</span></b>
+  <b>AR-картина · 90 секунд <span style="color:#f5c454">v5.3 · монеты летят в камеру</span></b>
   <div id="status">Нажми «Запустить AR»</div>
   <button id="start">Запустить AR</button>
   <button id="replay" hidden>Сначала</button>
@@ -203,8 +203,9 @@ async function initialize(){
       const dt=local%fallDur;
       return innerPose(dt);
     }
-    // Most exiting coins fly towards the phone lens (and stop in front of it).
-    // Other coins retain the original 10-second stay on the floor.
+    // Exiting coins pass THROUGH the camera plane and finish BEHIND it.
+    // No slowing, stopping, shrinking or fading in front of the phone.
+    // Other coins still fall to the floor and remain for 10 seconds.
     if(c.flyToViewer){
       const flightDur=1.05+noise(c.id+823)*.45;
       const cycle=fallDur+flightDur+.12;
@@ -213,20 +214,23 @@ async function initialize(){
       const dt=phase-fallDur;
       if(dt>=flightDur) return null;
       const p=clamp(dt/flightDur,0,1);
-      const eased=p*p*(3-2*p);
-      // Start just below the picture opening and move toward the CURRENT camera.
+      // Aim from the lower frame toward the CURRENT camera, then extend
+      // another 60cm past the camera in the exact same direction.
       flightStart.set(c.edgeBand,safeBottom,.025);
       flightDelta.copy(cameraLocal).sub(flightStart);
       const distance=flightDelta.length();
       if(distance<.08) return null;
-      // Remain ~30 cm short of the camera instead of crossing its near plane.
-      flightTarget.copy(cameraLocal).addScaledVector(flightDelta,-.30/distance);
-      const x=lerp(flightStart.x,flightTarget.x,eased) + c.vx*.12*Math.sin(Math.PI*p);
-      const y=lerp(flightStart.y,flightTarget.y,eased) - .065*Math.sin(Math.PI*p);
-      const z=lerp(flightStart.z,flightTarget.z,eased);
+      flightDelta.multiplyScalar(1/distance);
+      flightTarget.copy(cameraLocal).addScaledVector(flightDelta,.65*unit);
+      // Constant-to-accelerating travel, with no ease-out at the lens.
+      const travel=p*p*.25+p*.75;
+      const x=lerp(flightStart.x,flightTarget.x,travel) + c.vx*.08*Math.sin(Math.PI*p);
+      const y=lerp(flightStart.y,flightTarget.y,travel) - .045*Math.sin(Math.PI*p);
+      const z=lerp(flightStart.z,flightTarget.z,travel);
       const spin=c.spinBase+dt*(9+Math.abs(c.spinBase));
-      const fade=clamp((1-p)/.12,0,1);
-      return {x,y,z,rx:Math.PI/2+dt*4,ry:spin,rz:dt*6+c.tumble,s:fade};
+      // Natural perspective and near-plane clipping hide the coin only
+      // when it reaches/passes the camera; it is not faded before contact.
+      return {x,y,z,rx:Math.PI/2+dt*4,ry:spin,rz:dt*6+c.tumble,s:1};
     }
     const landY=FLOOR_Y+RADIUS;
     const tLand=solveLanding(safeBottom,c.vy,c.g,landY);
